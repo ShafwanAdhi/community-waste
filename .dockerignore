@@ -1,0 +1,9 @@
+.git
+.env
+.env.*
+.local
+.superpowers
+.worktrees
+bin
+uploads
+coverage.out

@@ -1,0 +1,10 @@
+.env
+.env.*
+!.env.example
+.local/
+.superpowers/
+.worktrees/
+/bin/
+/uploads/
+/coverage.out
+*.test

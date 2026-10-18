@@ -1,0 +1,56 @@
+{
+  "info": {
+    "_postman_id": "a25dcb6a-6327-45a3-b7a8-9dc3a49c9507",
+    "name": "Community Waste Collection API",
+    "description": "Foundation checkpoint: database health and consistent HTTP error responses. Start the Docker Compose application before running. Business endpoints are added in subsequent checkpoints.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {"key": "base_url", "value": "http://localhost:8080", "type": "string"}
+  ],
+  "item": [
+    {
+      "name": "Foundation",
+      "item": [
+        {
+          "name": "Database health",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{base_url}}/healthz",
+            "description": "Checks PostgreSQL connectivity. Returns 200 while available and 503 with a generic error when unavailable."
+          },
+          "event": [{"listen": "test", "script": {"type": "text/javascript", "exec": [
+            "pm.test('HTTP 200', function () { pm.response.to.have.status(200); });",
+            "pm.test('JSON content type', function () { pm.expect(pm.response.headers.get('Content-Type')).to.eql('application/json'); });",
+            "pm.test('Database is healthy', function () { pm.expect(pm.response.json()).to.deep.equal({data: {status: 'ok'}}); });"
+          ]}}],
+          "response": [
+            {"name": "Healthy", "status": "OK", "code": 200, "header": [{"key": "Content-Type", "value": "application/json"}], "body": "{\"data\":{\"status\":\"ok\"}}"},
+            {"name": "Database unavailable", "status": "Service Unavailable", "code": 503, "header": [{"key": "Content-Type", "value": "application/json"}], "body": "{\"error\":{\"code\":\"service_unavailable\",\"message\":\"Database is unavailable\"}}"}
+          ]
+        },
+        {
+          "name": "Unknown endpoint",
+          "request": {"method": "GET", "header": [], "url": "{{base_url}}/not-an-endpoint", "description": "Unknown paths return a JSON error."},
+          "event": [{"listen": "test", "script": {"type": "text/javascript", "exec": [
+            "pm.test('HTTP 404', function () { pm.response.to.have.status(404); });",
+            "pm.test('JSON content type', function () { pm.expect(pm.response.headers.get('Content-Type')).to.eql('application/json'); });",
+            "pm.test('Stable error code', function () { pm.expect(pm.response.json().error.code).to.eql('not_found'); });"
+          ]}}],
+          "response": [{"name": "Not found", "status": "Not Found", "code": 404, "header": [{"key": "Content-Type", "value": "application/json"}], "body": "{\"error\":{\"code\":\"not_found\",\"message\":\"Endpoint was not found\"}}"}]
+        },
+        {
+          "name": "Unsupported health method",
+          "request": {"method": "POST", "header": [], "url": "{{base_url}}/healthz", "description": "The health endpoint accepts GET and HEAD only."},
+          "event": [{"listen": "test", "script": {"type": "text/javascript", "exec": [
+            "pm.test('HTTP 405', function () { pm.response.to.have.status(405); });",
+            "pm.test('Allowed methods', function () { pm.expect(pm.response.headers.get('Allow')).to.eql('GET, HEAD'); });",
+            "pm.test('Stable error code', function () { pm.expect(pm.response.json().error.code).to.eql('method_not_allowed'); });"
+          ]}}],
+          "response": [{"name": "Method not allowed", "status": "Method Not Allowed", "code": 405, "header": [{"key": "Content-Type", "value": "application/json"}, {"key": "Allow", "value": "GET, HEAD"}], "body": "{\"error\":{\"code\":\"method_not_allowed\",\"message\":\"Method is not allowed\"}}"}]
+        }
+      ]
+    }
+  ]
+}
