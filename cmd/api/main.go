@@ -78,9 +78,10 @@ func run(ctx context.Context, args []string, logger *slog.Logger) error {
 	}
 	defer listener.Close()
 	households := service.NewHousehold(postgres.NewHousehold(pool))
+	pickups := service.NewPickup(postgres.NewPickup(pool))
 	srv := &http.Server{
 		Addr:              cfg.HTTPAddr,
-		Handler:           handler.New(pool.Ping, logger, households),
+		Handler:           handler.New(pool.Ping, logger, households, pickups),
 		ReadHeaderTimeout: 5 * time.Second,
 		ReadTimeout:       15 * time.Second,
 		WriteTimeout:      15 * time.Second,

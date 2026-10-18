@@ -2,7 +2,7 @@
   "info": {
     "_postman_id": "a25dcb6a-6327-45a3-b7a8-9dc3a49c9507",
     "name": "Community Waste Collection API",
-    "description": "Health and Household API checkpoint. Start Docker Compose before running. The Households folder creates and deletes its own record; existing records are preserved. Run requests in order. Pickup, payment, and reporting endpoints are added in later checkpoints.",
+    "description": "Household and pickup lifecycle checkpoint. Start Docker Compose and run requests in order. Households cleans up its own unreferenced record. Pickups creates a dedicated household per run and retains canceled pickup history; existing records are preserved. Completion, payment, reports, and public documentation follow in later checkpoints.",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "variable": [
@@ -13,6 +13,21 @@
     },
     {
       "key": "household_id",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "pickup_household_id",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "organic_pickup_id",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "electronic_pickup_id",
       "value": "",
       "type": "string"
     }
@@ -701,6 +716,878 @@
                   "pm.test('Stable error code', function () { pm.expect(pm.response.json().error.code).to.eql('not_found'); });"
                 ]
               }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Pickups",
+      "description": "Run in order. Creates one dedicated household and two pickups; cancels both at the end. These records remain as history because pickups cannot be deleted. No existing data is changed. Billing policies are also exercised by isolated PostgreSQL tests until payment endpoints become available.",
+      "item": [
+        {
+          "name": "Create dedicated pickup household",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{base_url}}/api/households",
+            "description": "Creates a new household for this run. Retained with pickup history.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\"owner_name\":\"Postman pickup lifecycle\",\"address\":\"Dedicated local API test fixture\"}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "['pickup_household_id', 'organic_pickup_id', 'electronic_pickup_id'].forEach(function (key) { pm.collectionVariables.unset(key); });"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 201', function () { pm.response.to.have.status(201); });",
+                  "pm.test('JSON content type', function () { pm.expect(pm.response.headers.get('Content-Type')).to.eql('application/json'); });",
+                  "pm.test('Household ID', function () { pm.expect(pm.response.json().data.id).to.match(/^[0-9a-f-]{36}$/); });",
+                  "if (pm.response.code === 201) pm.collectionVariables.set('pickup_household_id', pm.response.json().data.id);"
+                ]
+              }
+            }
+          ],
+          "response": [
+            {
+              "name": "Created",
+              "status": "Created",
+              "code": 201,
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "body": "{\n  \"data\": {\n    \"id\": \"10000000-0000-4000-8000-000000000001\",\n    \"owner_name\": \"Postman pickup lifecycle\",\n    \"address\": \"Dedicated local API test fixture\",\n    \"created_at\": \"2026-10-18T10:00:00Z\",\n    \"updated_at\": \"2026-10-18T10:00:00Z\"\n  }\n}"
+            }
+          ]
+        },
+        {
+          "name": "Create organic pickup",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{base_url}}/api/pickups",
+            "description": "Creates a pending pickup with no scheduled date.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\"household_id\":\"{{pickup_household_id}}\",\"type\":\"organic\"}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 201', function () { pm.response.to.have.status(201); });",
+                  "pm.test('JSON content type', function () { pm.expect(pm.response.headers.get('Content-Type')).to.eql('application/json'); });",
+                  "pm.test('Initial pickup', function () { const p = pm.response.json().data; pm.expect(p.status).to.eql('pending'); pm.expect(p.type).to.eql('organic'); pm.expect(p.household_id).to.eql(pm.collectionVariables.get('pickup_household_id')); pm.expect(p.pickup_date).to.eql(null); pm.expect(p.safety_check).to.eql(null); });",
+                  "if (pm.response.code === 201) pm.collectionVariables.set('organic_pickup_id', pm.response.json().data.id);"
+                ]
+              }
+            }
+          ],
+          "response": [
+            {
+              "name": "Created",
+              "status": "Created",
+              "code": 201,
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "body": "{\n  \"data\": {\n    \"id\": \"20000000-0000-4000-8000-000000000001\",\n    \"household_id\": \"10000000-0000-4000-8000-000000000001\",\n    \"type\": \"organic\",\n    \"status\": \"pending\",\n    \"pickup_date\": null,\n    \"safety_check\": null,\n    \"created_at\": \"2026-10-18T10:00:00Z\",\n    \"updated_at\": \"2026-10-18T10:00:00Z\"\n  }\n}"
+            }
+          ]
+        },
+        {
+          "name": "Create electronic with false safety check",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{base_url}}/api/pickups",
+            "description": "False is valid at creation; scheduling requires true.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\"household_id\":\"{{pickup_household_id}}\",\"type\":\"electronic\",\"safety_check\":false}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 201', function () { pm.response.to.have.status(201); });",
+                  "pm.test('JSON content type', function () { pm.expect(pm.response.headers.get('Content-Type')).to.eql('application/json'); });",
+                  "pm.test('Explicit false retained', function () { const p = pm.response.json().data; pm.expect(p.type).to.eql('electronic'); pm.expect(p.status).to.eql('pending'); pm.expect(p.safety_check).to.eql(false); });",
+                  "if (pm.response.code === 201) pm.collectionVariables.set('electronic_pickup_id', pm.response.json().data.id);"
+                ]
+              }
+            }
+          ],
+          "response": [
+            {
+              "name": "Created",
+              "status": "Created",
+              "code": 201,
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "body": "{\n  \"data\": {\n    \"id\": \"20000000-0000-4000-8000-000000000002\",\n    \"household_id\": \"10000000-0000-4000-8000-000000000001\",\n    \"type\": \"electronic\",\n    \"status\": \"pending\",\n    \"pickup_date\": null,\n    \"safety_check\": false,\n    \"created_at\": \"2026-10-18T10:00:00Z\",\n    \"updated_at\": \"2026-10-18T10:00:00Z\"\n  }\n}"
+            }
+          ]
+        },
+        {
+          "name": "Reject missing electronic check",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{base_url}}/api/pickups",
+            "description": "Input validation failed",
+            "body": {
+              "mode": "raw",
+              "raw": "{\"household_id\":\"{{pickup_household_id}}\",\"type\":\"electronic\"}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 422', function () { pm.response.to.have.status(422); });",
+                  "pm.test('JSON content type', function () { pm.expect(pm.response.headers.get('Content-Type')).to.eql('application/json'); });",
+                  "pm.test('Stable error code', function () { pm.expect(pm.response.json().error.code).to.eql('validation_failed'); });",
+                  "pm.test('Safety field error', function () { pm.expect(pm.response.json().error.fields).to.have.property('safety_check'); });"
+                ]
+              }
+            }
+          ],
+          "response": [
+            {
+              "name": "Unprocessable Entity",
+              "status": "Unprocessable Entity",
+              "code": 422,
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "body": "{\n  \"error\": {\n    \"code\": \"validation_failed\",\n    \"message\": \"Input validation failed\",\n    \"fields\": {\n      \"safety_check\": \"Safety check is required for electronic pickups\"\n    }\n  }\n}"
+            }
+          ]
+        },
+        {
+          "name": "Reject invalid waste type",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{base_url}}/api/pickups",
+            "description": "Input validation failed",
+            "body": {
+              "mode": "raw",
+              "raw": "{\"household_id\":\"{{pickup_household_id}}\",\"type\":\"metal\"}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 422', function () { pm.response.to.have.status(422); });",
+                  "pm.test('JSON content type', function () { pm.expect(pm.response.headers.get('Content-Type')).to.eql('application/json'); });",
+                  "pm.test('Stable error code', function () { pm.expect(pm.response.json().error.code).to.eql('validation_failed'); });",
+                  "pm.test('Type field error', function () { pm.expect(pm.response.json().error.fields).to.have.property('type'); });"
+                ]
+              }
+            }
+          ],
+          "response": [
+            {
+              "name": "Unprocessable Entity",
+              "status": "Unprocessable Entity",
+              "code": 422,
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "body": "{\n  \"error\": {\n    \"code\": \"validation_failed\",\n    \"message\": \"Input validation failed\"\n  }\n}"
+            }
+          ]
+        },
+        {
+          "name": "List pending household pickups",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{base_url}}/api/pickups?household_id={{pickup_household_id}}&status=pending&limit=1",
+            "description": "Both filters combine; stable order is created_at DESC, id DESC."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 200', function () { pm.response.to.have.status(200); });",
+                  "pm.test('JSON content type', function () { pm.expect(pm.response.headers.get('Content-Type')).to.eql('application/json'); });",
+                  "pm.test('Filtered pagination', function () { const b = pm.response.json(); pm.expect(b.meta).to.deep.eql({page: 1, limit: 1, total: 2}); pm.expect(b.data).to.have.lengthOf(1); pm.expect(b.data[0].household_id).to.eql(pm.collectionVariables.get('pickup_household_id')); pm.expect(b.data[0].status).to.eql('pending'); });"
+                ]
+              }
+            }
+          ],
+          "response": [
+            {
+              "name": "OK",
+              "status": "OK",
+              "code": 200,
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "body": "{\n  \"data\": [\n    {\n      \"id\": \"20000000-0000-4000-8000-000000000002\",\n      \"household_id\": \"10000000-0000-4000-8000-000000000001\",\n      \"type\": \"electronic\",\n      \"status\": \"pending\",\n      \"pickup_date\": null,\n      \"safety_check\": false,\n      \"created_at\": \"2026-10-18T10:00:00Z\",\n      \"updated_at\": \"2026-10-18T10:00:00Z\"\n    }\n  ],\n  \"meta\": {\n    \"page\": 1,\n    \"limit\": 1,\n    \"total\": 2\n  }\n}"
+            }
+          ]
+        },
+        {
+          "name": "Reject unsafe electronic scheduling",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{base_url}}/api/pickups/{{electronic_pickup_id}}/schedule",
+            "description": "Electronic pickup requires a successful safety check",
+            "body": {
+              "mode": "raw",
+              "raw": "{\"pickup_date\":\"{{pickup_future_date}}\"}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.variables.set('pickup_future_date', new Date(Date.now() + 86400000).toISOString());"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 409', function () { pm.response.to.have.status(409); });",
+                  "pm.test('JSON content type', function () { pm.expect(pm.response.headers.get('Content-Type')).to.eql('application/json'); });",
+                  "pm.test('Stable error code', function () { pm.expect(pm.response.json().error.code).to.eql('safety_check_required'); });"
+                ]
+              }
+            }
+          ],
+          "response": [
+            {
+              "name": "Conflict",
+              "status": "Conflict",
+              "code": 409,
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "body": "{\n  \"error\": {\n    \"code\": \"safety_check_required\",\n    \"message\": \"Electronic pickup requires a successful safety check\"\n  }\n}"
+            }
+          ]
+        },
+        {
+          "name": "Schedule electronic and complete safety check",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{base_url}}/api/pickups/{{electronic_pickup_id}}/schedule",
+            "description": "Pending only. Future RFC3339 date; optional safety_check updates the stored value.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\"pickup_date\":\"{{pickup_future_date}}\",\"safety_check\":true}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.variables.set('pickup_future_date', new Date(Date.now() + 86400000).toISOString());"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 200', function () { pm.response.to.have.status(200); });",
+                  "pm.test('JSON content type', function () { pm.expect(pm.response.headers.get('Content-Type')).to.eql('application/json'); });",
+                  "pm.test('Safety and schedule persisted', function () { const p = pm.response.json().data; pm.expect(p.status).to.eql('scheduled'); pm.expect(p.safety_check).to.eql(true); pm.expect(p.pickup_date).to.match(/Z$/); pm.expect(new Date(p.pickup_date).getTime()).to.eql(new Date(pm.variables.get('pickup_future_date')).getTime()); });"
+                ]
+              }
+            }
+          ],
+          "response": [
+            {
+              "name": "OK",
+              "status": "OK",
+              "code": 200,
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "body": "{\n  \"data\": {\n    \"id\": \"20000000-0000-4000-8000-000000000002\",\n    \"household_id\": \"10000000-0000-4000-8000-000000000001\",\n    \"type\": \"electronic\",\n    \"status\": \"scheduled\",\n    \"pickup_date\": \"2026-10-25T01:00:00Z\",\n    \"safety_check\": true,\n    \"created_at\": \"2026-10-18T10:00:00Z\",\n    \"updated_at\": \"2026-10-18T10:00:00Z\"\n  }\n}"
+            }
+          ]
+        },
+        {
+          "name": "Reject repeat scheduling",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{base_url}}/api/pickups/{{electronic_pickup_id}}/schedule",
+            "description": "Pickup status does not allow this operation",
+            "body": {
+              "mode": "raw",
+              "raw": "{\"pickup_date\":\"{{pickup_future_date}}\"}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.variables.set('pickup_future_date', new Date(Date.now() + 86400000).toISOString());"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 409', function () { pm.response.to.have.status(409); });",
+                  "pm.test('JSON content type', function () { pm.expect(pm.response.headers.get('Content-Type')).to.eql('application/json'); });",
+                  "pm.test('Stable error code', function () { pm.expect(pm.response.json().error.code).to.eql('invalid_transition'); });"
+                ]
+              }
+            }
+          ],
+          "response": [
+            {
+              "name": "Conflict",
+              "status": "Conflict",
+              "code": 409,
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "body": "{\n  \"error\": {\n    \"code\": \"invalid_transition\",\n    \"message\": \"Pickup status does not allow this operation\"\n  }\n}"
+            }
+          ]
+        },
+        {
+          "name": "Reject past pickup date",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{base_url}}/api/pickups/{{organic_pickup_id}}/schedule",
+            "description": "Input validation failed",
+            "body": {
+              "mode": "raw",
+              "raw": "{\"pickup_date\":\"2000-01-01T00:00:00Z\"}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 422', function () { pm.response.to.have.status(422); });",
+                  "pm.test('JSON content type', function () { pm.expect(pm.response.headers.get('Content-Type')).to.eql('application/json'); });",
+                  "pm.test('Stable error code', function () { pm.expect(pm.response.json().error.code).to.eql('validation_failed'); });",
+                  "pm.test('Date field error', function () { pm.expect(pm.response.json().error.fields).to.have.property('pickup_date'); });"
+                ]
+              }
+            }
+          ],
+          "response": [
+            {
+              "name": "Unprocessable Entity",
+              "status": "Unprocessable Entity",
+              "code": 422,
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "body": "{\n  \"error\": {\n    \"code\": \"validation_failed\",\n    \"message\": \"Input validation failed\"\n  }\n}"
+            }
+          ]
+        },
+        {
+          "name": "Reject malformed date",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{base_url}}/api/pickups/{{organic_pickup_id}}/schedule",
+            "description": "Input validation failed",
+            "body": {
+              "mode": "raw",
+              "raw": "{\"pickup_date\":\"tomorrow\"}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 422', function () { pm.response.to.have.status(422); });",
+                  "pm.test('JSON content type', function () { pm.expect(pm.response.headers.get('Content-Type')).to.eql('application/json'); });",
+                  "pm.test('Stable error code', function () { pm.expect(pm.response.json().error.code).to.eql('validation_failed'); });"
+                ]
+              }
+            }
+          ],
+          "response": [
+            {
+              "name": "Unprocessable Entity",
+              "status": "Unprocessable Entity",
+              "code": 422,
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "body": "{\n  \"error\": {\n    \"code\": \"validation_failed\",\n    \"message\": \"Input validation failed\"\n  }\n}"
+            }
+          ]
+        },
+        {
+          "name": "Reject repeated filter",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{base_url}}/api/pickups?status=pending&status=scheduled",
+            "description": "Status and household_id must each contain one valid value"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 400', function () { pm.response.to.have.status(400); });",
+                  "pm.test('JSON content type', function () { pm.expect(pm.response.headers.get('Content-Type')).to.eql('application/json'); });",
+                  "pm.test('Stable error code', function () { pm.expect(pm.response.json().error.code).to.eql('invalid_filter'); });"
+                ]
+              }
+            }
+          ],
+          "response": [
+            {
+              "name": "Bad Request",
+              "status": "Bad Request",
+              "code": 400,
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "body": "{\n  \"error\": {\n    \"code\": \"invalid_filter\",\n    \"message\": \"Status and household_id must each contain one valid value\"\n  }\n}"
+            }
+          ]
+        },
+        {
+          "name": "Reject invalid household filter",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{base_url}}/api/pickups?household_id=invalid",
+            "description": "Status and household_id must each contain one valid value"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 400', function () { pm.response.to.have.status(400); });",
+                  "pm.test('JSON content type', function () { pm.expect(pm.response.headers.get('Content-Type')).to.eql('application/json'); });",
+                  "pm.test('Stable error code', function () { pm.expect(pm.response.json().error.code).to.eql('invalid_filter'); });"
+                ]
+              }
+            }
+          ],
+          "response": [
+            {
+              "name": "Bad Request",
+              "status": "Bad Request",
+              "code": 400,
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "body": "{\n  \"error\": {\n    \"code\": \"invalid_filter\",\n    \"message\": \"Status and household_id must each contain one valid value\"\n  }\n}"
+            }
+          ]
+        },
+        {
+          "name": "Reject invalid pickup ID",
+          "request": {
+            "method": "PUT",
+            "header": [],
+            "url": "{{base_url}}/api/pickups/invalid/cancel",
+            "description": "ID must be a hyphenated UUID"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 400', function () { pm.response.to.have.status(400); });",
+                  "pm.test('JSON content type', function () { pm.expect(pm.response.headers.get('Content-Type')).to.eql('application/json'); });",
+                  "pm.test('Stable error code', function () { pm.expect(pm.response.json().error.code).to.eql('invalid_id'); });"
+                ]
+              }
+            }
+          ],
+          "response": [
+            {
+              "name": "Bad Request",
+              "status": "Bad Request",
+              "code": 400,
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "body": "{\n  \"error\": {\n    \"code\": \"invalid_id\",\n    \"message\": \"ID must be a hyphenated UUID\"\n  }\n}"
+            }
+          ]
+        },
+        {
+          "name": "Cancel scheduled electronic pickup",
+          "request": {
+            "method": "PUT",
+            "header": [],
+            "url": "{{base_url}}/api/pickups/{{electronic_pickup_id}}/cancel",
+            "description": "Pending or scheduled only; no body required. Fails any related pending invoice atomically; a paid invoice prevents cancellation."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 200', function () { pm.response.to.have.status(200); });",
+                  "pm.test('JSON content type', function () { pm.expect(pm.response.headers.get('Content-Type')).to.eql('application/json'); });",
+                  "pm.test('Canceled and history retained', function () { const p = pm.response.json().data; pm.expect(p.status).to.eql('canceled'); pm.expect(p.safety_check).to.eql(true); pm.expect(p.pickup_date).to.be.a('string'); });"
+                ]
+              }
+            }
+          ],
+          "response": [
+            {
+              "name": "OK",
+              "status": "OK",
+              "code": 200,
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "body": "{\n  \"data\": {\n    \"id\": \"20000000-0000-4000-8000-000000000002\",\n    \"household_id\": \"10000000-0000-4000-8000-000000000001\",\n    \"type\": \"electronic\",\n    \"status\": \"canceled\",\n    \"pickup_date\": \"2026-10-25T01:00:00Z\",\n    \"safety_check\": true,\n    \"created_at\": \"2026-10-18T10:00:00Z\",\n    \"updated_at\": \"2026-10-18T10:00:00Z\"\n  }\n}"
+            }
+          ]
+        },
+        {
+          "name": "Reject repeat cancellation",
+          "request": {
+            "method": "PUT",
+            "header": [],
+            "url": "{{base_url}}/api/pickups/{{electronic_pickup_id}}/cancel",
+            "description": "Pickup status does not allow this operation"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 409', function () { pm.response.to.have.status(409); });",
+                  "pm.test('JSON content type', function () { pm.expect(pm.response.headers.get('Content-Type')).to.eql('application/json'); });",
+                  "pm.test('Stable error code', function () { pm.expect(pm.response.json().error.code).to.eql('invalid_transition'); });"
+                ]
+              }
+            }
+          ],
+          "response": [
+            {
+              "name": "Conflict",
+              "status": "Conflict",
+              "code": 409,
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "body": "{\n  \"error\": {\n    \"code\": \"invalid_transition\",\n    \"message\": \"Pickup status does not allow this operation\"\n  }\n}"
+            }
+          ]
+        },
+        {
+          "name": "Cancel pending organic pickup",
+          "request": {
+            "method": "PUT",
+            "header": [],
+            "url": "{{base_url}}/api/pickups/{{organic_pickup_id}}/cancel",
+            "description": "Cancels this run's other pickup."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 200', function () { pm.response.to.have.status(200); });",
+                  "pm.test('JSON content type', function () { pm.expect(pm.response.headers.get('Content-Type')).to.eql('application/json'); });",
+                  "pm.test('Pending pickup canceled', function () { pm.expect(pm.response.json().data.status).to.eql('canceled'); });"
+                ]
+              }
+            }
+          ],
+          "response": [
+            {
+              "name": "OK",
+              "status": "OK",
+              "code": 200,
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "body": "{\n  \"data\": {\n    \"id\": \"20000000-0000-4000-8000-000000000001\",\n    \"household_id\": \"10000000-0000-4000-8000-000000000001\",\n    \"type\": \"organic\",\n    \"status\": \"canceled\",\n    \"pickup_date\": null,\n    \"safety_check\": null,\n    \"created_at\": \"2026-10-18T10:00:00Z\",\n    \"updated_at\": \"2026-10-18T10:00:00Z\"\n  }\n}"
+            }
+          ]
+        },
+        {
+          "name": "List canceled household history",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{base_url}}/api/pickups?household_id={{pickup_household_id}}&status=canceled",
+            "description": "Historical records remain available."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 200', function () { pm.response.to.have.status(200); });",
+                  "pm.test('JSON content type', function () { pm.expect(pm.response.headers.get('Content-Type')).to.eql('application/json'); });",
+                  "pm.test('Both fixtures canceled', function () { const b = pm.response.json(); pm.expect(b.meta.total).to.eql(2); pm.expect(b.data).to.have.lengthOf(2); b.data.forEach(function (p) { pm.expect(p.household_id).to.eql(pm.collectionVariables.get('pickup_household_id')); pm.expect(p.status).to.eql('canceled'); }); });"
+                ]
+              }
+            }
+          ],
+          "response": [
+            {
+              "name": "OK",
+              "status": "OK",
+              "code": 200,
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "body": "{\n  \"data\": [\n    {\n      \"id\": \"20000000-0000-4000-8000-000000000002\",\n      \"household_id\": \"10000000-0000-4000-8000-000000000001\",\n      \"type\": \"electronic\",\n      \"status\": \"canceled\",\n      \"pickup_date\": \"2026-10-25T01:00:00Z\",\n      \"safety_check\": true,\n      \"created_at\": \"2026-10-18T10:00:00Z\",\n      \"updated_at\": \"2026-10-18T10:00:00Z\"\n    },\n    {\n      \"id\": \"20000000-0000-4000-8000-000000000001\",\n      \"household_id\": \"10000000-0000-4000-8000-000000000001\",\n      \"type\": \"organic\",\n      \"status\": \"canceled\",\n      \"pickup_date\": null,\n      \"safety_check\": null,\n      \"created_at\": \"2026-10-18T10:00:00Z\",\n      \"updated_at\": \"2026-10-18T10:00:00Z\"\n    }\n  ],\n  \"meta\": {\n    \"page\": 1,\n    \"limit\": 20,\n    \"total\": 2\n  }\n}"
+            }
+          ]
+        },
+        {
+          "name": "Reject household deletion with pickup history",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": "{{base_url}}/api/households/{{pickup_household_id}}",
+            "description": "Household has related pickups or payments"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 409', function () { pm.response.to.have.status(409); });",
+                  "pm.test('JSON content type', function () { pm.expect(pm.response.headers.get('Content-Type')).to.eql('application/json'); });",
+                  "pm.test('Stable error code', function () { pm.expect(pm.response.json().error.code).to.eql('household_in_use'); });"
+                ]
+              }
+            }
+          ],
+          "response": [
+            {
+              "name": "Conflict",
+              "status": "Conflict",
+              "code": 409,
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "body": "{\n  \"error\": {\n    \"code\": \"household_in_use\",\n    \"message\": \"Household has related pickups or payments\"\n  }\n}"
             }
           ]
         }

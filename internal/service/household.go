@@ -2,8 +2,6 @@ package service
 
 import (
 	"context"
-	"encoding/hex"
-	"math"
 	"strings"
 
 	"community-waste/internal/domain"
@@ -45,8 +43,7 @@ func (s *Household) Create(ctx context.Context, ownerName, address string) (doma
 }
 
 func (s *Household) List(ctx context.Context, pagination domain.Pagination) (domain.HouseholdPage, error) {
-	if pagination.Page < 1 || pagination.Limit < 1 || pagination.Limit > 100 ||
-		pagination.Page-1 > math.MaxInt64/pagination.Limit {
+	if !validPagination(pagination) {
 		return domain.HouseholdPage{}, domain.ErrInvalidPagination
 	}
 	return s.repository.List(ctx, pagination)
@@ -64,12 +61,4 @@ func (s *Household) Delete(ctx context.Context, id string) error {
 		return domain.ErrInvalidID
 	}
 	return s.repository.Delete(ctx, id)
-}
-
-func validUUID(id string) bool {
-	if len(id) != 36 || id[8] != '-' || id[13] != '-' || id[18] != '-' || id[23] != '-' {
-		return false
-	}
-	decoded, err := hex.DecodeString(strings.ReplaceAll(id, "-", ""))
-	return err == nil && len(decoded) == 16
 }

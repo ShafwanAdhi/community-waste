@@ -3,10 +3,15 @@ package domain
 import "errors"
 
 var (
-	ErrNotFound          = errors.New("resource not found")
-	ErrHouseholdInUse    = errors.New("household has related records")
-	ErrInvalidID         = errors.New("id must be a UUID")
-	ErrInvalidPagination = errors.New("invalid pagination")
+	ErrNotFound            = errors.New("resource not found")
+	ErrHouseholdInUse      = errors.New("household has related records")
+	ErrInvalidID           = errors.New("id must be a UUID")
+	ErrInvalidPagination   = errors.New("invalid pagination")
+	ErrInvalidFilter       = errors.New("invalid filter")
+	ErrPendingPayment      = errors.New("household has pending payment")
+	ErrInvalidTransition   = errors.New("pickup status does not allow this operation")
+	ErrSafetyCheckRequired = errors.New("electronic pickup requires a successful safety check")
+	ErrPaymentAlreadyPaid  = errors.New("paid pickup cannot be canceled")
 )
 
 type ValidationError struct {

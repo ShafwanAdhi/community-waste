@@ -41,7 +41,7 @@ func (r householdRepositoryStub) Delete(ctx context.Context, id string) error {
 }
 
 func householdRouter(repository service.HouseholdRepository) http.Handler {
-	return New(func(context.Context) error { return nil }, slog.New(slog.NewTextHandler(io.Discard, nil)), service.NewHousehold(repository))
+	return New(func(context.Context) error { return nil }, slog.New(slog.NewTextHandler(io.Discard, nil)), service.NewHousehold(repository), nil)
 }
 
 func householdRequest(h http.Handler, method, path, body, contentType string) *httptest.ResponseRecorder {
@@ -189,7 +189,7 @@ func TestHouseholdMethods(t *testing.T) {
 
 func TestHouseholdHTTPWithPostgres(t *testing.T) {
 	pool := testutil.NewDatabase(t)
-	h := New(pool.Ping, slog.New(slog.NewTextHandler(io.Discard, nil)), service.NewHousehold(postgres.NewHousehold(pool)))
+	h := New(pool.Ping, slog.New(slog.NewTextHandler(io.Discard, nil)), service.NewHousehold(postgres.NewHousehold(pool)), nil)
 	res := householdRequest(h, "POST", "/api/households", `{"owner_name":"Ayu","address":"Jl. Merdeka 1"}`, "application/json")
 	if res.Code != 201 {
 		t.Fatalf("create: %d %s", res.Code, res.Body.String())

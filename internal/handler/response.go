@@ -54,6 +54,16 @@ func writeFailure(w http.ResponseWriter, r *http.Request, err error, logger *slo
 		writeError(w, http.StatusBadRequest, "invalid_id", "ID must be a hyphenated UUID")
 	case errors.Is(err, domain.ErrInvalidPagination):
 		writeError(w, http.StatusBadRequest, "invalid_pagination", "Page and limit must be positive integers; limit must not exceed 100 and offset must fit int64")
+	case errors.Is(err, domain.ErrInvalidFilter):
+		writeError(w, http.StatusBadRequest, "invalid_filter", "Status and household_id must each contain one valid value")
+	case errors.Is(err, domain.ErrPendingPayment):
+		writeError(w, http.StatusConflict, "pending_payment", "Household has a pending payment")
+	case errors.Is(err, domain.ErrInvalidTransition):
+		writeError(w, http.StatusConflict, "invalid_transition", "Pickup status does not allow this operation")
+	case errors.Is(err, domain.ErrSafetyCheckRequired):
+		writeError(w, http.StatusConflict, "safety_check_required", "Electronic pickup requires a successful safety check")
+	case errors.Is(err, domain.ErrPaymentAlreadyPaid):
+		writeError(w, http.StatusConflict, "payment_already_paid", "Pickup with a paid payment cannot be canceled")
 	case errors.Is(err, domain.ErrNotFound):
 		writeError(w, http.StatusNotFound, "not_found", "Resource was not found")
 	case errors.Is(err, domain.ErrHouseholdInUse):
