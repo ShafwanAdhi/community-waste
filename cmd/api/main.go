@@ -15,7 +15,9 @@ import (
 	"community-waste/internal/config"
 	"community-waste/internal/database"
 	"community-waste/internal/handler"
+	"community-waste/internal/repository/postgres"
 	"community-waste/internal/server"
+	"community-waste/internal/service"
 )
 
 func main() {
@@ -75,9 +77,10 @@ func run(ctx context.Context, args []string, logger *slog.Logger) error {
 		return fmt.Errorf("listen: %w", err)
 	}
 	defer listener.Close()
+	households := service.NewHousehold(postgres.NewHousehold(pool))
 	srv := &http.Server{
 		Addr:              cfg.HTTPAddr,
-		Handler:           handler.New(pool.Ping, logger),
+		Handler:           handler.New(pool.Ping, logger, households),
 		ReadHeaderTimeout: 5 * time.Second,
 		ReadTimeout:       15 * time.Second,
 		WriteTimeout:      15 * time.Second,

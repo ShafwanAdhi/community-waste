@@ -2,11 +2,20 @@
   "info": {
     "_postman_id": "a25dcb6a-6327-45a3-b7a8-9dc3a49c9507",
     "name": "Community Waste Collection API",
-    "description": "Foundation checkpoint: database health and consistent HTTP error responses. Start the Docker Compose application before running. Business endpoints are added in subsequent checkpoints.",
+    "description": "Health and Household API checkpoint. Start Docker Compose before running. The Households folder creates and deletes its own record; existing records are preserved. Run requests in order. Pickup, payment, and reporting endpoints are added in later checkpoints.",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "variable": [
-    {"key": "base_url", "value": "http://localhost:8080", "type": "string"}
+    {
+      "key": "base_url",
+      "value": "http://localhost:8080",
+      "type": "string"
+    },
+    {
+      "key": "household_id",
+      "value": "",
+      "type": "string"
+    }
   ],
   "item": [
     {
@@ -20,35 +29,680 @@
             "url": "{{base_url}}/healthz",
             "description": "Checks PostgreSQL connectivity. Returns 200 while available and 503 with a generic error when unavailable."
           },
-          "event": [{"listen": "test", "script": {"type": "text/javascript", "exec": [
-            "pm.test('HTTP 200', function () { pm.response.to.have.status(200); });",
-            "pm.test('JSON content type', function () { pm.expect(pm.response.headers.get('Content-Type')).to.eql('application/json'); });",
-            "pm.test('Database is healthy', function () { pm.expect(pm.response.json()).to.deep.equal({data: {status: 'ok'}}); });"
-          ]}}],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 200', function () { pm.response.to.have.status(200); });",
+                  "pm.test('JSON content type', function () { pm.expect(pm.response.headers.get('Content-Type')).to.eql('application/json'); });",
+                  "pm.test('Database is healthy', function () { pm.expect(pm.response.json()).to.deep.equal({data: {status: 'ok'}}); });"
+                ]
+              }
+            }
+          ],
           "response": [
-            {"name": "Healthy", "status": "OK", "code": 200, "header": [{"key": "Content-Type", "value": "application/json"}], "body": "{\"data\":{\"status\":\"ok\"}}"},
-            {"name": "Database unavailable", "status": "Service Unavailable", "code": 503, "header": [{"key": "Content-Type", "value": "application/json"}], "body": "{\"error\":{\"code\":\"service_unavailable\",\"message\":\"Database is unavailable\"}}"}
+            {
+              "name": "Healthy",
+              "status": "OK",
+              "code": 200,
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "body": "{\"data\":{\"status\":\"ok\"}}"
+            },
+            {
+              "name": "Database unavailable",
+              "status": "Service Unavailable",
+              "code": 503,
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "body": "{\"error\":{\"code\":\"service_unavailable\",\"message\":\"Database is unavailable\"}}"
+            }
           ]
         },
         {
           "name": "Unknown endpoint",
-          "request": {"method": "GET", "header": [], "url": "{{base_url}}/not-an-endpoint", "description": "Unknown paths return a JSON error."},
-          "event": [{"listen": "test", "script": {"type": "text/javascript", "exec": [
-            "pm.test('HTTP 404', function () { pm.response.to.have.status(404); });",
-            "pm.test('JSON content type', function () { pm.expect(pm.response.headers.get('Content-Type')).to.eql('application/json'); });",
-            "pm.test('Stable error code', function () { pm.expect(pm.response.json().error.code).to.eql('not_found'); });"
-          ]}}],
-          "response": [{"name": "Not found", "status": "Not Found", "code": 404, "header": [{"key": "Content-Type", "value": "application/json"}], "body": "{\"error\":{\"code\":\"not_found\",\"message\":\"Endpoint was not found\"}}"}]
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{base_url}}/not-an-endpoint",
+            "description": "Unknown paths return a JSON error."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 404', function () { pm.response.to.have.status(404); });",
+                  "pm.test('JSON content type', function () { pm.expect(pm.response.headers.get('Content-Type')).to.eql('application/json'); });",
+                  "pm.test('Stable error code', function () { pm.expect(pm.response.json().error.code).to.eql('not_found'); });"
+                ]
+              }
+            }
+          ],
+          "response": [
+            {
+              "name": "Not found",
+              "status": "Not Found",
+              "code": 404,
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "body": "{\"error\":{\"code\":\"not_found\",\"message\":\"Endpoint was not found\"}}"
+            }
+          ]
         },
         {
           "name": "Unsupported health method",
-          "request": {"method": "POST", "header": [], "url": "{{base_url}}/healthz", "description": "The health endpoint accepts GET and HEAD only."},
-          "event": [{"listen": "test", "script": {"type": "text/javascript", "exec": [
-            "pm.test('HTTP 405', function () { pm.response.to.have.status(405); });",
-            "pm.test('Allowed methods', function () { pm.expect(pm.response.headers.get('Allow')).to.eql('GET, HEAD'); });",
-            "pm.test('Stable error code', function () { pm.expect(pm.response.json().error.code).to.eql('method_not_allowed'); });"
-          ]}}],
-          "response": [{"name": "Method not allowed", "status": "Method Not Allowed", "code": 405, "header": [{"key": "Content-Type", "value": "application/json"}, {"key": "Allow", "value": "GET, HEAD"}], "body": "{\"error\":{\"code\":\"method_not_allowed\",\"message\":\"Method is not allowed\"}}"}]
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": "{{base_url}}/healthz",
+            "description": "The health endpoint accepts GET and HEAD only."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 405', function () { pm.response.to.have.status(405); });",
+                  "pm.test('Allowed methods', function () { pm.expect(pm.response.headers.get('Allow')).to.eql('GET, HEAD'); });",
+                  "pm.test('Stable error code', function () { pm.expect(pm.response.json().error.code).to.eql('method_not_allowed'); });"
+                ]
+              }
+            }
+          ],
+          "response": [
+            {
+              "name": "Method not allowed",
+              "status": "Method Not Allowed",
+              "code": 405,
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                },
+                {
+                  "key": "Allow",
+                  "value": "GET, HEAD"
+                }
+              ],
+              "body": "{\"error\":{\"code\":\"method_not_allowed\",\"message\":\"Method is not allowed\"}}"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Households",
+      "description": "Run this folder in order. Four endpoints with positive and negative cases. It creates and removes its own household.",
+      "item": [
+        {
+          "name": "Create household",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{base_url}}/api/households",
+            "description": "Required nonblank owner_name and address. Surrounding whitespace is trimmed. Stores the generated UUID for subsequent requests.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\"owner_name\":\"  Ayu  \",\"address\":\"Jl. Merdeka 1\"}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.collectionVariables.unset('household_id');"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 201', function () { pm.response.to.have.status(201); });",
+                  "pm.test('JSON content type', function () { pm.expect(pm.response.headers.get('Content-Type')).to.eql('application/json'); });",
+                  "const household = pm.response.json().data;",
+                  "pm.test('Generated UUID', function () { pm.expect(household.id).to.match(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/); });",
+                  "pm.test('Fields and timestamps', function () { pm.expect(household.owner_name).to.eql('Ayu'); pm.expect(household.address).to.eql('Jl. Merdeka 1'); pm.expect(household.created_at).to.be.a('string'); pm.expect(household.updated_at).to.eql(household.created_at); });",
+                  "pm.test('Resource Location', function () { pm.expect(pm.response.headers.get('Location')).to.eql('/api/households/' + household.id); });",
+                  "if (pm.response.code === 201) { pm.collectionVariables.set('household_id', household.id); }"
+                ]
+              }
+            }
+          ],
+          "response": [
+            {
+              "name": "Create household",
+              "originalRequest": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "url": "{{base_url}}/api/households",
+                "description": "Required nonblank owner_name and address. Surrounding whitespace is trimmed. Stores the generated UUID for subsequent requests.",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\"owner_name\":\"  Ayu  \",\"address\":\"Jl. Merdeka 1\"}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
+              },
+              "code": 201,
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "body": "{\n  \"data\": {\n    \"id\": \"10000000-0000-4000-8000-000000000001\",\n    \"owner_name\": \"Ayu\",\n    \"address\": \"Jl. Merdeka 1\",\n    \"created_at\": \"2026-01-01T00:00:00Z\",\n    \"updated_at\": \"2026-01-01T00:00:00Z\"\n  }\n}"
+            }
+          ]
+        },
+        {
+          "name": "List households",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{base_url}}/api/households",
+            "description": "Defaults: page=1, limit=20. Sorted by created_at DESC, id DESC. Existing records are allowed."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 200', function () { pm.response.to.have.status(200); });",
+                  "pm.test('JSON content type', function () { pm.expect(pm.response.headers.get('Content-Type')).to.eql('application/json'); });",
+                  "pm.test('List metadata', function () { const body = pm.response.json(); pm.expect(body.data).to.be.an('array'); pm.expect(body.meta.page).to.eql(1); pm.expect(body.meta.limit).to.eql(20); pm.expect(body.meta.total).to.be.at.least(1); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Paginate households",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{base_url}}/api/households?page=1&limit=1",
+            "description": "Positive integer page and limit, maximum limit 100. Count and rows use the same database snapshot."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 200', function () { pm.response.to.have.status(200); });",
+                  "pm.test('JSON content type', function () { pm.expect(pm.response.headers.get('Content-Type')).to.eql('application/json'); });",
+                  "pm.test('Requested page size', function () { const body = pm.response.json(); pm.expect(body.data).to.have.lengthOf(1); pm.expect(body.meta.page).to.eql(1); pm.expect(body.meta.limit).to.eql(1); pm.expect(body.meta.total).to.be.at.least(1); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Get household",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{base_url}}/api/households/{{household_id}}",
+            "description": "Read the record created by the first request."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 200', function () { pm.response.to.have.status(200); });",
+                  "pm.test('JSON content type', function () { pm.expect(pm.response.headers.get('Content-Type')).to.eql('application/json'); });",
+                  "pm.test('Stored household', function () { const household = pm.response.json().data; pm.expect(household.id).to.eql(pm.collectionVariables.get('household_id')); pm.expect(household.owner_name).to.eql('Ayu'); pm.expect(household.address).to.eql('Jl. Merdeka 1'); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Reject blank owner",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{base_url}}/api/households",
+            "description": "Required fields are validated after trimming whitespace.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\"owner_name\":\"  \",\"address\":\"Address\"}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 422', function () { pm.response.to.have.status(422); });",
+                  "pm.test('JSON content type', function () { pm.expect(pm.response.headers.get('Content-Type')).to.eql('application/json'); });",
+                  "pm.test('Stable error code', function () { pm.expect(pm.response.json().error.code).to.eql('validation_failed'); });",
+                  "pm.test('Owner field error', function () { pm.expect(pm.response.json().error.fields.owner_name).to.be.a('string').and.not.empty; });"
+                ]
+              }
+            }
+          ],
+          "response": [
+            {
+              "name": "Reject blank owner",
+              "originalRequest": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "url": "{{base_url}}/api/households",
+                "description": "Required fields are validated after trimming whitespace.",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\"owner_name\":\"  \",\"address\":\"Address\"}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
+              },
+              "code": 422,
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "body": "{\n  \"error\": {\n    \"code\": \"validation_failed\",\n    \"message\": \"Input validation failed\",\n    \"fields\": {\n      \"owner_name\": \"Owner name is required\"\n    }\n  }\n}"
+            }
+          ]
+        },
+        {
+          "name": "Reject malformed JSON",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{base_url}}/api/households",
+            "description": "Broken JSON is rejected before service validation.",
+            "body": {
+              "mode": "raw",
+              "raw": "{",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 400', function () { pm.response.to.have.status(400); });",
+                  "pm.test('JSON content type', function () { pm.expect(pm.response.headers.get('Content-Type')).to.eql('application/json'); });",
+                  "pm.test('Stable error code', function () { pm.expect(pm.response.json().error.code).to.eql('invalid_json'); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Reject NUL character",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{base_url}}/api/households",
+            "description": "PostgreSQL TEXT does not accept NUL. Invalid field values are rejected before persistence.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\"owner_name\":\"Ayu\\u0000\",\"address\":\"Address\"}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 422', function () { pm.response.to.have.status(422); });",
+                  "pm.test('JSON content type', function () { pm.expect(pm.response.headers.get('Content-Type')).to.eql('application/json'); });",
+                  "pm.test('Stable error code', function () { pm.expect(pm.response.json().error.code).to.eql('validation_failed'); });",
+                  "pm.test('Owner field error', function () { pm.expect(pm.response.json().error.fields.owner_name).to.be.a('string').and.not.empty; });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Reject non-JSON whitespace",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{base_url}}/api/households",
+            "description": "Vertical tab is not valid JSON whitespace and must not be silently removed.",
+            "body": {
+              "mode": "raw",
+              "raw": "\u000b{\"owner_name\": \"Ayu\", \"address\": \"Address\"}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 400', function () { pm.response.to.have.status(400); });",
+                  "pm.test('JSON content type', function () { pm.expect(pm.response.headers.get('Content-Type')).to.eql('application/json'); });",
+                  "pm.test('Stable error code', function () { pm.expect(pm.response.json().error.code).to.eql('invalid_json'); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Reject unknown field",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{base_url}}/api/households",
+            "description": "Only owner_name and address may be supplied. IDs are generated by the server.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\"owner_name\":\"Ayu\",\"address\":\"Address\",\"id\":\"ignored\"}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 400', function () { pm.response.to.have.status(400); });",
+                  "pm.test('JSON content type', function () { pm.expect(pm.response.headers.get('Content-Type')).to.eql('application/json'); });",
+                  "pm.test('Stable error code', function () { pm.expect(pm.response.json().error.code).to.eql('invalid_json'); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Reject invalid UUID",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{base_url}}/api/households/not-a-uuid",
+            "description": "IDs must contain hexadecimal UUID text in 8-4-4-4-12 format."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 400', function () { pm.response.to.have.status(400); });",
+                  "pm.test('JSON content type', function () { pm.expect(pm.response.headers.get('Content-Type')).to.eql('application/json'); });",
+                  "pm.test('Stable error code', function () { pm.expect(pm.response.json().error.code).to.eql('invalid_id'); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Reject invalid pagination",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{base_url}}/api/households?limit=101",
+            "description": "The maximum page size is 100."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 400', function () { pm.response.to.have.status(400); });",
+                  "pm.test('JSON content type', function () { pm.expect(pm.response.headers.get('Content-Type')).to.eql('application/json'); });",
+                  "pm.test('Stable error code', function () { pm.expect(pm.response.json().error.code).to.eql('invalid_pagination'); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Reject unsupported media",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "text/plain"
+              }
+            ],
+            "url": "{{base_url}}/api/households",
+            "description": "JSON requests require Content-Type application/json.",
+            "body": {
+              "mode": "raw",
+              "raw": "{}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 415', function () { pm.response.to.have.status(415); });",
+                  "pm.test('JSON content type', function () { pm.expect(pm.response.headers.get('Content-Type')).to.eql('application/json'); });",
+                  "pm.test('Stable error code', function () { pm.expect(pm.response.json().error.code).to.eql('unsupported_media_type'); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Reject oversized JSON",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{base_url}}/api/households",
+            "description": "JSON request bodies are limited to 64 KiB. The local variable is generated only for this request.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\"owner_name\":\"{{oversized_name}}\",\"address\":\"Address\"}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.variables.set('oversized_name', 'x'.repeat(65536));"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 413', function () { pm.response.to.have.status(413); });",
+                  "pm.test('JSON content type', function () { pm.expect(pm.response.headers.get('Content-Type')).to.eql('application/json'); });",
+                  "pm.test('Stable error code', function () { pm.expect(pm.response.json().error.code).to.eql('body_too_large'); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Delete household",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": "{{base_url}}/api/households/{{household_id}}",
+            "description": "Deletes only the record created by this folder. A household with related pickup/payment records returns 409 household_in_use."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 204', function () { pm.response.to.have.status(204); });",
+                  "pm.test('Empty response body', function () { pm.expect(pm.response.text()).to.eql(''); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Get deleted household",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{base_url}}/api/households/{{household_id}}",
+            "description": "A valid UUID that no longer exists returns 404."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 404', function () { pm.response.to.have.status(404); });",
+                  "pm.test('JSON content type', function () { pm.expect(pm.response.headers.get('Content-Type')).to.eql('application/json'); });",
+                  "pm.test('Stable error code', function () { pm.expect(pm.response.json().error.code).to.eql('not_found'); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Delete missing household",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": "{{base_url}}/api/households/{{household_id}}",
+            "description": "Repeated deletion returns 404 and does not affect other records."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 404', function () { pm.response.to.have.status(404); });",
+                  "pm.test('JSON content type', function () { pm.expect(pm.response.headers.get('Content-Type')).to.eql('application/json'); });",
+                  "pm.test('Stable error code', function () { pm.expect(pm.response.json().error.code).to.eql('not_found'); });"
+                ]
+              }
+            }
+          ]
         }
       ]
     }

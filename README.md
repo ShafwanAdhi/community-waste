@@ -2,7 +2,7 @@
 
 API pengumpulan sampah komunitas menggunakan Go dan PostgreSQL.
 
-Checkpoint saat ini menyediakan fondasi aplikasi: konfigurasi, health endpoint, migration tiga tabel, dan lingkungan Docker. Endpoint household, pickup, payment, reporting, serta seed belum tersedia pada checkpoint ini.
+Checkpoint saat ini menyediakan Household API, konfigurasi, health endpoint, migration tiga tabel, dan lingkungan Docker. Endpoint pickup, payment, reporting, serta seed belum tersedia pada checkpoint ini.
 
 ## Menjalankan aplikasi
 
@@ -39,6 +39,62 @@ docker compose up -d
 ```
 
 Database dan direktori uploads memakai named volume sehingga tetap tersedia ketika container dibuat ulang. Proses aplikasi berjalan sebagai user non-root. SIGINT/SIGTERM menghentikan penerimaan request baru dan memberi waktu bagi request berjalan untuk selesai.
+
+## Household API
+
+| Method | Endpoint | Hasil |
+|---|---|---|
+| `POST` | `/api/households` | Membuat household; HTTP 201 dan header `Location` |
+| `GET` | `/api/households?page=1&limit=20` | Daftar household dengan pagination |
+| `GET` | `/api/households/{id}` | Detail household |
+| `DELETE` | `/api/households/{id}` | Menghapus household tanpa relasi; HTTP 204 tanpa body |
+
+Contoh pembuatan household:
+
+```http
+POST /api/households
+Content-Type: application/json
+
+{"owner_name":"Ayu","address":"Jl. Merdeka 1"}
+```
+
+```json
+{
+  "data": {
+    "id": "10000000-0000-4000-8000-000000000001",
+    "owner_name": "Ayu",
+    "address": "Jl. Merdeka 1",
+    "created_at": "2026-01-01T00:00:00Z",
+    "updated_at": "2026-01-01T00:00:00Z"
+  }
+}
+```
+
+UUID dan timestamp pada contoh bersifat ilustratif. Server membuat UUID; timestamp response memakai UTC. `owner_name` dan `address` wajib berupa string yang tidak kosong setelah spasi di awal/akhir dibuang. Karakter NUL tidak diterima karena tidak dapat disimpan dalam PostgreSQL TEXT; pelanggaran menghasilkan validasi field `422`.
+
+Body POST harus satu objek JSON, hanya dengan field `owner_name` dan `address`, maksimum 64 KiB. Field tambahan, JSON rusak, body kosong, atau lebih dari satu objek menghasilkan `400`. Content-Type selain `application/json` menghasilkan `415`; body terlalu besar menghasilkan `413`.
+
+Validasi field menghasilkan `422`:
+
+```json
+{
+  "error": {
+    "code": "validation_failed",
+    "message": "Input validation failed",
+    "fields": {"owner_name": "Owner name is required"}
+  }
+}
+```
+
+Response daftar menambahkan metadata:
+
+```json
+{"data":[],"meta":{"page":1,"limit":20,"total":0}}
+```
+
+Default `page=1` dan `limit=20`; keduanya bilangan bulat positif, dengan limit maksimum 100. Parameter kosong/berulang atau offset yang melampaui int64 menghasilkan `400`. Urutan daftar adalah `created_at DESC, id DESC`. Jumlah total dan isi halaman dibaca dari snapshot yang sama. Halaman di luar jangkauan tetap mengembalikan array kosong dan total yang benar.
+
+ID pada URL harus UUID berformat `8-4-4-4-12`; format salah menghasilkan `400`, sedangkan UUID yang tidak ditemukan menghasilkan `404`. Penghapusan household yang memiliki pickup atau payment menghasilkan `409` dengan kode `household_in_use`. Foreign key database menjaga aturan ini. Kesalahan internal menghasilkan JSON `500` tanpa detail SQL atau koneksi.
 
 ## Konfigurasi
 
@@ -91,9 +147,9 @@ docker compose --profile test run --rm test gofmt -l cmd internal migrations
 
 Perintah pertama menjalankan seluruh test dengan race detector. Integration test menggunakan PostgreSQL terpisah di tmpfs dan membuat schema unik per pengujian. Migration up/down tidak dijalankan pada database aplikasi. Output `gofmt -l` harus kosong.
 
-Pengujian mencakup validasi konfigurasi, response health dan routing error, penyelesaian request saat shutdown, migration up/down, serta constraint database untuk relasi, status, tipe sampah, safety check electronic, nominal, dan duplikasi payment.
+Pengujian mencakup validasi konfigurasi, response health dan routing error, penyelesaian request saat shutdown, migration up/down, CRUD household, validasi body/UUID/query, pagination, penanganan kegagalan database, serta constraint relasi dan penghapusan. Pengujian schema juga mencakup status, tipe sampah, safety check electronic, nominal, dan duplikasi payment.
 
-Collection Postman tersedia di `postman/community-waste.postman_collection.json`. Import collection lalu jalankan folder Foundation terhadap aplikasi yang aktif. Ubah variable `base_url` bila memakai port berbeda.
+Collection Postman tersedia di `postman/community-waste.postman_collection.json`. Import collection lalu jalankan seluruh collection terhadap aplikasi yang aktif. Ubah variable `base_url` bila memakai port berbeda. Folder Households membuat record sendiri, menyimpan ID ke variable `household_id`, lalu menghapus record tersebut di akhir alur.
 
 Jika Postman CLI tersedia:
 
@@ -101,7 +157,7 @@ Jika Postman CLI tersedia:
 postman collection run postman/community-waste.postman_collection.json --no-report-events
 ```
 
-Collection saat ini berisi health endpoint dan pemeriksaan error HTTP. Request bisnis dan dokumentasi Postman publik ditambahkan ketika fiturnya tersedia.
+Collection mencakup health, CRUD household, pagination, dan kasus input tidak valid. Request pickup/payment/report serta dokumentasi Postman publik ditambahkan pada milestone berikutnya. Kasus penghapusan household berelasi sudah diuji melalui HTTP dan PostgreSQL pada integration test; collection akan mencakupnya setelah endpoint pickup tersedia.
 
 ## Struktur
 
@@ -109,10 +165,14 @@ Collection saat ini berisi health endpoint dan pemeriksaan error HTTP. Request b
 cmd/api/            Entrypoint server, migration, dan healthcheck CLI
 internal/config/    Pembacaan dan validasi environment
 internal/database/  Connection pool dan eksekusi migration
+internal/domain/    Model, pagination, dan error aplikasi
 internal/handler/   Routing HTTP dan response JSON
+internal/service/   Validasi input dan aturan aplikasi
+internal/repository/postgres/  Query dan pemetaan error PostgreSQL
 internal/server/    Lifecycle server dan graceful shutdown
+internal/testutil/  Fixture database terisolasi untuk pengujian
 migrations/         SQL up/down yang di-embed ke binary
 postman/            Collection request dan assertion API
 ```
 
-Aturan bisnis akan ditempatkan pada service; SQL untuk fitur bisnis berada pada repository. Package tersebut ditambahkan bersama fitur yang menggunakannya.
+Handler menangani protokol HTTP dan pemetaan error. Service memvalidasi input dan bergantung pada interface repository. Implementasi PostgreSQL menjalankan SQL berparameter serta menerjemahkan error relasi menjadi error aplikasi. Entrypoint menghubungkan ketiganya melalui constructor biasa.
