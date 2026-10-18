@@ -3,6 +3,9 @@ package domain
 import "errors"
 
 var (
+	ErrHouseholdMismatch   = errors.New("payment household does not own the pickup")
+	ErrPaymentExists       = errors.New("pickup already has a payment")
+	ErrPaymentConflict     = errors.New("existing payment is inconsistent with pickup billing")
 	ErrNotFound            = errors.New("resource not found")
 	ErrHouseholdInUse      = errors.New("household has related records")
 	ErrInvalidID           = errors.New("id must be a UUID")

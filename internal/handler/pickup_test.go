@@ -37,7 +37,7 @@ func (s pickupServiceStub) Cancel(ctx context.Context, id string) (domain.Pickup
 	return s.cancel(ctx, id)
 }
 func pickupRouter(s PickupService) http.Handler {
-	return New(func(context.Context) error { return nil }, slog.New(slog.NewTextHandler(io.Discard, nil)), nil, s)
+	return New(func(context.Context) error { return nil }, slog.New(slog.NewTextHandler(io.Discard, nil)), nil, s, nil)
 }
 
 func TestPickupHTTPContract(t *testing.T) {

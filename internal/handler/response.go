@@ -54,6 +54,12 @@ func writeFailure(w http.ResponseWriter, r *http.Request, err error, logger *slo
 		writeError(w, http.StatusBadRequest, "invalid_id", "ID must be a hyphenated UUID")
 	case errors.Is(err, domain.ErrInvalidPagination):
 		writeError(w, http.StatusBadRequest, "invalid_pagination", "Page and limit must be positive integers; limit must not exceed 100 and offset must fit int64")
+	case errors.Is(err, domain.ErrHouseholdMismatch):
+		writeError(w, http.StatusConflict, "household_mismatch", "Household does not own this pickup")
+	case errors.Is(err, domain.ErrPaymentExists):
+		writeError(w, http.StatusConflict, "payment_exists", "Pickup already has a payment")
+	case errors.Is(err, domain.ErrPaymentConflict):
+		writeError(w, http.StatusConflict, "payment_conflict", "Existing payment is inconsistent with pickup billing")
 	case errors.Is(err, domain.ErrInvalidFilter):
 		writeError(w, http.StatusBadRequest, "invalid_filter", "Status and household_id must each contain one valid value")
 	case errors.Is(err, domain.ErrPendingPayment):

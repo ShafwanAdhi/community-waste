@@ -2,7 +2,7 @@
 
 API pengumpulan sampah komunitas menggunakan Go dan PostgreSQL.
 
-Checkpoint saat ini menyediakan Household API dan alur pickup untuk membuat, melihat daftar, menjadwalkan, dan membatalkan permintaan. Completion, pembuatan/konfirmasi payment, reporting, serta seed belum tersedia pada checkpoint ini.
+Checkpoint saat ini menyediakan Household API, alur pickup hingga completion, serta pembuatan dan daftar payment. Konfirmasi bukti bayar, filter tanggal payment, reporting, serta seed belum tersedia pada checkpoint ini.
 
 ## Menjalankan aplikasi
 
@@ -104,6 +104,7 @@ ID pada URL harus UUID berformat `8-4-4-4-12`; format salah menghasilkan `400`, 
 | `GET` | `/api/pickups?page=1&limit=20&status=pending&household_id={id}` | Daftar dengan pagination dan filter opsional |
 | `PUT` | `/api/pickups/{id}/schedule` | Mengubah `pending` menjadi `scheduled` |
 | `PUT` | `/api/pickups/{id}/cancel` | Membatalkan pickup `pending` atau `scheduled` |
+| `PUT` | `/api/pickups/{id}/complete` | Menyelesaikan pickup `scheduled` dan memastikan invoice tersedia |
 
 Contoh permintaan electronic:
 
@@ -137,7 +138,55 @@ Aturan body JSON, batas 64 KiB, dan error `400`/`413`/`415` berlaku pada create 
 
 Pembatalan boleh dilakukan pada status pending/scheduled, sedangkan completed/canceled tidak dapat diubah lagi. Payment paid melarang pembatalan; payment pending dibatalkan menjadi failed. Household dengan riwayat tetap tidak dapat dihapus. Kebijakan tambahan ini menjelaskan perilaku yang tidak dirinci oleh soal.
 
-Mutasi pickup mengunci household lebih dahulu, lalu pickup dan payment bila diperlukan. Service memegang aturan bisnis dan batas transaksi; repository menyediakan operasi SQL dalam transaksi tersebut. Pengujian PostgreSQL memeriksa dua penjadwalan bersamaan, penjadwalan bersamaan dengan pembatalan, serta rollback jika pembaruan pickup gagal setelah invoice diubah. Endpoint payment pada milestone berikutnya akan mengikuti urutan lock yang sama.
+Mutasi pickup mengunci household lebih dahulu, lalu pickup dan payment bila diperlukan. Service memegang aturan bisnis dan batas transaksi; repository menyediakan operasi SQL dalam transaksi tersebut. Pengujian PostgreSQL memeriksa dua penjadwalan bersamaan, penjadwalan bersamaan dengan pembatalan, serta rollback jika pembaruan pickup gagal setelah invoice diubah. Mutasi payment memakai urutan lock yang sama agar pemeriksaan payment pending tetap berlaku ketika request berjalan bersamaan.
+
+## Payment dan completion
+
+| Method | Endpoint | Hasil |
+|---|---|---|
+| `POST` | `/api/payments` | Membuat invoice manual `pending`; HTTP 201 |
+| `GET` | `/api/payments?page=1&limit=20&status=pending&household_id={id}` | Daftar payment dengan filter opsional |
+| `PUT` | `/api/pickups/{id}/complete` | Mengubah pickup `scheduled` menjadi `completed`; HTTP 200 |
+
+```http
+POST /api/payments
+Content-Type: application/json
+
+{"household_id":"10000000-0000-4000-8000-000000000001","waste_id":"20000000-0000-4000-8000-000000000001","amount":"50000.00"}
+```
+
+`waste_id` adalah ID pickup. Invoice manual hanya dapat dibuat untuk pickup `pending` atau `scheduled`. Household harus memiliki pickup tersebut; ketidakcocokan menghasilkan `409 household_mismatch`. Pickup yang tidak ditemukan menghasilkan `404`. Satu pickup mempunyai paling banyak satu payment; percobaan duplikasi pada pickup aktif menghasilkan `409 payment_exists`, termasuk jika invoice sebelumnya sudah failed.
+
+| Type | Tarif |
+|---|---|
+| organic, plastic, paper | `"50000.00"` |
+| electronic | `"100000.00"` |
+
+`amount` dikirim sebagai string desimal positif, maksimum `9999999999.99`. String bilangan bulat serta satu/dua digit pecahan diterima; response selalu mempunyai dua digit pecahan. Angka JSON menghasilkan `400`; nominal nol, negatif, notasi eksponen, lebih dari dua digit pecahan, atau tarif yang tidak sesuai menghasilkan `422` dengan detail field `amount`. Go menggunakan int64 dalam satuan 1/100 rupiah; PostgreSQL memakai NUMERIC(12,2), tanpa perhitungan float.
+
+```json
+{
+  "data": {
+    "id": "30000000-0000-4000-8000-000000000001",
+    "household_id": "10000000-0000-4000-8000-000000000001",
+    "waste_id": "20000000-0000-4000-8000-000000000001",
+    "amount": "50000.00",
+    "payment_date": null,
+    "status": "pending",
+    "proof_file_url": null,
+    "created_at": "2026-10-18T10:00:00Z",
+    "updated_at": "2026-10-18T10:00:00Z"
+  }
+}
+```
+
+Completion tidak memerlukan body dan hanya berlaku dari `scheduled`. Server membuat invoice pending sesuai tarif bila belum ada. Invoice manual dengan nominal tepat dan status pending/paid dipakai ulang dengan ID yang sama. Invoice failed atau nominal yang tidak konsisten menghasilkan `409 payment_conflict`. Perubahan status pickup dan pembuatan invoice berada dalam satu transaksi; kegagalan salah satu penulisan membatalkan seluruh perubahan. Completion ulang menghasilkan `409 invalid_transition`.
+
+Response completion berisi pickup yang diperbarui. Gunakan GET payments dengan `household_id` untuk melihat tagihannya. Payment pending memblokir pembuatan pickup baru pada household tersebut. Konfirmasi dan upload bukti bayar ditambahkan pada milestone berikutnya.
+
+Daftar payment mengikuti pagination, snapshot, urutan, format UTC, dan aturan error query daftar pickup. Filter status menerima `pending`, `paid`, atau `failed`; filter household_id menerima UUID. Endpoint ini belum menerapkan filter tanggal pada checkpoint ini.
+
+Kebijakan invoice manual, satu invoice per pickup, pemakaian ulang invoice pending/paid, dan penolakan invoice failed saat completion merupakan asumsi desain tambahan. Completion tidak menunggu waktu pickup_date lewat; perubahan status dilakukan eksplisit oleh pemanggil setelah pekerjaan selesai.
 
 ## Konfigurasi
 
@@ -190,7 +239,7 @@ docker compose --profile test run --rm test gofmt -l cmd internal migrations
 
 Perintah pertama menjalankan seluruh test dengan race detector. Integration test menggunakan PostgreSQL terpisah di tmpfs dan membuat schema unik per pengujian. Migration up/down tidak dijalankan pada database aplikasi. Output `gofmt -l` harus kosong.
 
-Pengujian pickup mencakup empat tipe sampah, electronic safety check, tanggal mendatang, transisi status, filter/pagination, payment pending/paid, transaksi rollback, dan request bersamaan. Pengujian lain mencakup validasi konfigurasi, response health dan routing error, penyelesaian request saat shutdown, migration up/down, CRUD household, validasi body/UUID/query, pagination, penanganan kegagalan database, serta constraint relasi dan penghapusan. Pengujian schema juga mencakup status, tipe sampah, safety check electronic, nominal, dan duplikasi payment.
+Pengujian billing mencakup parsing uang, empat tarif, invoice manual/otomatis, reuse invoice, rollback pada kegagalan INSERT payment maupun UPDATE pickup, dan antrean transaksi bersamaan yang diverifikasi melalui lock PostgreSQL. Pengujian pickup mencakup empat tipe sampah, electronic safety check, tanggal mendatang, transisi status, filter/pagination, payment pending/paid, transaksi rollback, dan request bersamaan. Pengujian lain mencakup validasi konfigurasi, response health dan routing error, penyelesaian request saat shutdown, migration up/down, CRUD household, validasi body/UUID/query, pagination, penanganan kegagalan database, serta constraint relasi dan penghapusan. Pengujian schema juga mencakup status, tipe sampah, safety check electronic, nominal, dan duplikasi payment.
 
 Collection Postman tersedia di `postman/community-waste.postman_collection.json`. Import collection lalu jalankan seluruh collection terhadap aplikasi yang aktif. Ubah variable `base_url` bila memakai port berbeda. Folder Households membuat record sendiri, menyimpan ID ke variable `household_id`, lalu menghapus record tersebut di akhir alur.
 
@@ -200,7 +249,7 @@ Jika Postman CLI tersedia:
 postman collection run postman/community-waste.postman_collection.json --no-report-events
 ```
 
-Collection mencakup health, CRUD household, alur pickup, pagination/filter, safety check, konflik status, dan input tidak valid. Folder Pickups membuat household khusus dan membatalkan pickup miliknya pada akhir alur. Household dan riwayat pickup dari folder ini tetap tersimpan karena API tidak menyediakan penghapusan pickup. Setiap run memakai fixture baru dan tidak mengubah data yang sudah ada. Endpoint payment/report dan dokumentasi Postman publik ditambahkan pada milestone berikutnya.
+Collection mencakup health, CRUD household, alur pickup, pagination/filter, safety check, konflik status, dan input tidak valid. Folder Pickups membuat household khusus dan membatalkan pickup miliknya pada akhir alur. Household dan riwayat pickup dari folder ini tetap tersimpan karena API tidak menyediakan penghapusan pickup. Setiap run memakai fixture baru dan tidak mengubah data yang sudah ada. Folder Billing membuat household dan pickup khusus untuk invoice manual/otomatis, reuse, penolakan pickup baru, serta pembatalan invoice. Riwayat completed/canceled dan invoice dari folder ini tetap tersimpan; invoice pending memblokir pickup baru pada household fixture tersebut. Konfirmasi, filter tanggal, reporting, dan dokumentasi Postman publik ditambahkan pada milestone berikutnya.
 
 ## Struktur
 
