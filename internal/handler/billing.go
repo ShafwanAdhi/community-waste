@@ -5,6 +5,7 @@ import (
 	"log/slog"
 	"net/http"
 	"net/url"
+	"time"
 
 	"community-waste/internal/domain"
 )
@@ -60,6 +61,26 @@ func (h billingHandler) list(w http.ResponseWriter, r *http.Request) {
 		} else {
 			filter.HouseholdID = values[0]
 		}
+	}
+	for _, bound := range []struct {
+		name   string
+		target **time.Time
+	}{{"date_from", &filter.DateFrom}, {"date_to", &filter.DateTo}} {
+		values, present := query[bound.name]
+		if !present {
+			continue
+		}
+		if len(values) != 1 || values[0] == "" {
+			writeFailure(w, r, domain.ErrInvalidFilter, h.logger)
+			return
+		}
+		date, err := parsePaymentTimestamp(values[0])
+		if err != nil {
+			writeFailure(w, r, domain.ErrInvalidFilter, h.logger)
+			return
+		}
+		utc := date.UTC()
+		*bound.target = &utc
 	}
 	page, err := h.service.List(r.Context(), filter)
 	if err != nil {

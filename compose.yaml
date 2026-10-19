@@ -8,6 +8,7 @@ x-application: &application
   environment: &application-environment
     DATABASE_URL: ${DATABASE_URL:-postgres://community:community_local@db:5432/community_waste?sslmode=disable&connect_timeout=5}
     APP_PORT: "8080"
+    UPLOAD_DIR: /app/uploads
     SHUTDOWN_TIMEOUT: ${SHUTDOWN_TIMEOUT:-10s}
 
 services:

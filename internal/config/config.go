@@ -10,6 +10,7 @@ import (
 )
 
 type Config struct {
+	UploadDir       string
 	HTTPAddr        string
 	DatabaseURL     string
 	ShutdownTimeout time.Duration
@@ -17,9 +18,14 @@ type Config struct {
 
 func Load() (Config, error) {
 	cfg := Config{
+		UploadDir:       "uploads",
 		HTTPAddr:        ":8080",
 		DatabaseURL:     os.Getenv("DATABASE_URL"),
 		ShutdownTimeout: 10 * time.Second,
+	}
+	if root := os.Getenv("UPLOAD_DIR"); root != "" {
+
+		cfg.UploadDir = root
 	}
 	databaseURL, err := url.Parse(cfg.DatabaseURL)
 	if err != nil || databaseURL.Hostname() == "" || strings.Trim(databaseURL.Path, "/") == "" ||

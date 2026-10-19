@@ -3,6 +3,10 @@ package domain
 import "errors"
 
 var (
+	ErrCommitUncertain     = errors.New("confirmation commit outcome is uncertain")
+	ErrProofTooLarge       = errors.New("proof file exceeds 5 MiB")
+	ErrUnsupportedProof    = errors.New("proof must be JPEG, PNG, or PDF")
+	ErrPaymentNotPending   = errors.New("only pending payment can be confirmed")
 	ErrHouseholdMismatch   = errors.New("payment household does not own the pickup")
 	ErrPaymentExists       = errors.New("pickup already has a payment")
 	ErrPaymentConflict     = errors.New("existing payment is inconsistent with pickup billing")

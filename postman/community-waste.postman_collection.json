@@ -2,7 +2,7 @@
   "info": {
     "_postman_id": "a25dcb6a-6327-45a3-b7a8-9dc3a49c9507",
     "name": "Community Waste Collection API",
-    "description": "Household, pickup lifecycle, and billing checkpoint. Start Docker Compose and run requests in order. Test folders create dedicated fixtures and preserve existing data. Canceled/completed pickup and billing history are retained. Confirmation, date filters, reports and public docs follow later.",
+    "description": "Household, pickup, billing and payment confirmation checkpoint. Run from repository root with Docker Compose active. Upload fixtures are under postman/fixtures. Dedicated historical fixtures/proofs remain; existing records are preserved. Reports, seed and public docs follow later.",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "variable": [
@@ -53,6 +53,51 @@
     },
     {
       "key": "billing_payment_id",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "confirm_household_id",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "confirm_pickup_id",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "confirm_canceled_id",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "confirm_payment_id",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "confirm_failed_id",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "confirm_new_pickup_id",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "confirm_date",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "confirm_proof",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "confirm_after_date",
       "value": "",
       "type": "string"
     }
@@ -185,7 +230,8 @@
             }
           ]
         }
-      ]
+      ],
+      "description": ""
     },
     {
       "name": "Households",
@@ -1360,7 +1406,7 @@
                   "value": "application/json"
                 }
               ],
-              "body": "{\n  \"error\": {\n    \"code\": \"invalid_filter\",\n    \"message\": \"Status and household_id must each contain one valid value\"\n  }\n}"
+              "body": "{\n  \"error\": {\n    \"code\": \"invalid_filter\",\n    \"message\": \"Query filters are invalid\"\n  }\n}"
             }
           ]
         },
@@ -1396,7 +1442,7 @@
                   "value": "application/json"
                 }
               ],
-              "body": "{\n  \"error\": {\n    \"code\": \"invalid_filter\",\n    \"message\": \"Status and household_id must each contain one valid value\"\n  }\n}"
+              "body": "{\n  \"error\": {\n    \"code\": \"invalid_filter\",\n    \"message\": \"Query filters are invalid\"\n  }\n}"
             }
           ]
         },
@@ -1620,7 +1666,7 @@
     },
     {
       "name": "Billing",
-      "description": "Run in order. Creates a dedicated household and three pickups before issuing invoices. Completed pickups and invoices are retained, including pending invoices, so only this fixture household remains blocked. Does not change existing data. Confirmation/date filters arrive next checkpoint.",
+      "description": "Run in order. Creates a dedicated household and three pickups before issuing invoices. Completed pickups and invoices are retained, including pending invoices, so only this fixture household remains blocked. Does not change existing data. Confirmation/date filters are covered in the next folder.",
       "item": [
         {
           "name": "Create billing household",
@@ -2705,7 +2751,7 @@
                   "value": "application/json"
                 }
               ],
-              "body": "{\n  \"error\": {\n    \"code\": \"invalid_filter\",\n    \"message\": \"Status and household_id must each contain one valid value\"\n  }\n}"
+              "body": "{\n  \"error\": {\n    \"code\": \"invalid_filter\",\n    \"message\": \"Query filters are invalid\"\n  }\n}"
             }
           ]
         },
@@ -2742,6 +2788,956 @@
                 }
               ],
               "body": "{\n  \"error\": {\n    \"code\": \"household_in_use\",\n    \"message\": \"Household has related pickups or payments\"\n  }\n}"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Confirmation",
+      "description": "Creates dedicated fixtures. Completes a pickup, confirms with a PDF, verifies date boundaries and permits a new pickup after payment. Also verifies failed/repeated confirmation. Stored proof and paid/failed history are retained. Set Postman working directory to repository root.",
+      "item": [
+        {
+          "name": "Create confirmation household",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{base_url}}/api/households",
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\"owner_name\":\"Postman confirmation\",\"address\":\"Dedicated proof fixture\"}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "[\"confirm_household_id\", \"confirm_pickup_id\", \"confirm_canceled_id\", \"confirm_payment_id\", \"confirm_failed_id\", \"confirm_new_pickup_id\", \"confirm_date\", \"confirm_proof\"].forEach(function (key) { pm.collectionVariables.unset(key); });",
+                  "pm.collectionVariables.unset('confirm_after_date');"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 201', function () { pm.response.to.have.status(201); });",
+                  "pm.test('JSON content type', function () { pm.expect(pm.response.headers.get('Content-Type')).to.eql('application/json'); });",
+                  "if (pm.response.code === 201) pm.collectionVariables.set('confirm_household_id', pm.response.json().data.id);"
+                ]
+              }
+            }
+          ],
+          "response": [
+            {
+              "name": "Created",
+              "status": "Created",
+              "code": 201,
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "body": "{\n  \"data\": {\n    \"id\": \"10000000-0000-4000-8000-000000000001\",\n    \"owner_name\": \"Postman confirmation\",\n    \"address\": \"Dedicated proof fixture\",\n    \"created_at\": \"2026-10-18T09:00:00Z\",\n    \"updated_at\": \"2026-10-18T09:00:00Z\"\n  }\n}"
+            }
+          ]
+        },
+        {
+          "name": "Create organic confirmation pickup",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{base_url}}/api/pickups",
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\"household_id\":\"{{confirm_household_id}}\",\"type\":\"organic\"}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 201', function () { pm.response.to.have.status(201); });",
+                  "pm.test('JSON content type', function () { pm.expect(pm.response.headers.get('Content-Type')).to.eql('application/json'); });",
+                  "if (pm.response.code === 201) pm.collectionVariables.set('confirm_pickup_id', pm.response.json().data.id);"
+                ]
+              }
+            }
+          ],
+          "response": [
+            {
+              "name": "Created",
+              "status": "Created",
+              "code": 201,
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "body": "{\n  \"data\": {\n    \"id\": \"20000000-0000-4000-8000-000000000001\",\n    \"household_id\": \"10000000-0000-4000-8000-000000000001\",\n    \"type\": \"organic\",\n    \"status\": \"pending\",\n    \"pickup_date\": null,\n    \"safety_check\": null,\n    \"created_at\": \"2026-10-18T09:00:00Z\",\n    \"updated_at\": \"2026-10-18T09:00:00Z\"\n  }\n}"
+            }
+          ]
+        },
+        {
+          "name": "Create paper confirmation pickup",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{base_url}}/api/pickups",
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\"household_id\":\"{{confirm_household_id}}\",\"type\":\"paper\"}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 201', function () { pm.response.to.have.status(201); });",
+                  "pm.test('JSON content type', function () { pm.expect(pm.response.headers.get('Content-Type')).to.eql('application/json'); });",
+                  "if (pm.response.code === 201) pm.collectionVariables.set('confirm_canceled_id', pm.response.json().data.id);"
+                ]
+              }
+            }
+          ],
+          "response": [
+            {
+              "name": "Created",
+              "status": "Created",
+              "code": 201,
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "body": "{\n  \"data\": {\n    \"id\": \"20000000-0000-4000-8000-000000000002\",\n    \"household_id\": \"10000000-0000-4000-8000-000000000001\",\n    \"type\": \"paper\",\n    \"status\": \"pending\",\n    \"pickup_date\": null,\n    \"safety_check\": null,\n    \"created_at\": \"2026-10-18T09:00:00Z\",\n    \"updated_at\": \"2026-10-18T09:00:00Z\"\n  }\n}"
+            }
+          ]
+        },
+        {
+          "name": "Schedule confirmation pickup",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{base_url}}/api/pickups/{{confirm_pickup_id}}/schedule",
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\"pickup_date\":\"{{confirm_future}}\"}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.variables.set('confirm_future', new Date(Date.now() + 86400000).toISOString());"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 200', function () { pm.response.to.have.status(200); });",
+                  "pm.test('JSON content type', function () { pm.expect(pm.response.headers.get('Content-Type')).to.eql('application/json'); });"
+                ]
+              }
+            }
+          ],
+          "response": [
+            {
+              "name": "OK",
+              "status": "OK",
+              "code": 200,
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "body": "{\n  \"data\": {\n    \"id\": \"20000000-0000-4000-8000-000000000001\",\n    \"household_id\": \"10000000-0000-4000-8000-000000000001\",\n    \"type\": \"organic\",\n    \"status\": \"scheduled\",\n    \"pickup_date\": \"2026-10-25T01:00:00Z\",\n    \"safety_check\": null,\n    \"created_at\": \"2026-10-18T09:00:00Z\",\n    \"updated_at\": \"2026-10-18T09:00:00Z\"\n  }\n}"
+            }
+          ]
+        },
+        {
+          "name": "Complete confirmation pickup",
+          "request": {
+            "method": "PUT",
+            "header": [],
+            "url": "{{base_url}}/api/pickups/{{confirm_pickup_id}}/complete",
+            "description": ""
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 200', function () { pm.response.to.have.status(200); });",
+                  "pm.test('JSON content type', function () { pm.expect(pm.response.headers.get('Content-Type')).to.eql('application/json'); });"
+                ]
+              }
+            }
+          ],
+          "response": [
+            {
+              "name": "OK",
+              "status": "OK",
+              "code": 200,
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "body": "{\n  \"data\": {\n    \"id\": \"20000000-0000-4000-8000-000000000001\",\n    \"household_id\": \"10000000-0000-4000-8000-000000000001\",\n    \"type\": \"organic\",\n    \"status\": \"completed\",\n    \"pickup_date\": \"2026-10-25T01:00:00Z\",\n    \"safety_check\": null,\n    \"created_at\": \"2026-10-18T09:00:00Z\",\n    \"updated_at\": \"2026-10-18T09:00:00Z\"\n  }\n}"
+            }
+          ]
+        },
+        {
+          "name": "Find pending automatic invoice",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{base_url}}/api/payments?household_id={{confirm_household_id}}&status=pending",
+            "description": ""
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 200', function () { pm.response.to.have.status(200); });",
+                  "pm.test('JSON content type', function () { pm.expect(pm.response.headers.get('Content-Type')).to.eql('application/json'); });",
+                  "pm.test('Automatic invoice available', function () { const b = pm.response.json(); pm.expect(b.meta.total).to.eql(1); pm.expect(b.data[0].amount).to.eql('50000.00'); });",
+                  "if (pm.response.code === 200 && pm.response.json().data.length === 1) pm.collectionVariables.set('confirm_payment_id', pm.response.json().data[0].id);"
+                ]
+              }
+            }
+          ],
+          "response": [
+            {
+              "name": "OK",
+              "status": "OK",
+              "code": 200,
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "body": "{\n  \"data\": [\n    {\n      \"id\": \"30000000-0000-4000-8000-000000000001\",\n      \"household_id\": \"10000000-0000-4000-8000-000000000001\",\n      \"waste_id\": \"20000000-0000-4000-8000-000000000001\",\n      \"amount\": \"50000.00\",\n      \"payment_date\": null,\n      \"status\": \"pending\",\n      \"proof_file_url\": null,\n      \"created_at\": \"2026-10-18T09:00:00Z\",\n      \"updated_at\": \"2026-10-18T09:00:00Z\"\n    }\n  ],\n  \"meta\": {\n    \"page\": 1,\n    \"limit\": 20,\n    \"total\": 1\n  }\n}"
+            }
+          ]
+        },
+        {
+          "name": "Create invoice for cancellation",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{base_url}}/api/payments",
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\"household_id\":\"{{confirm_household_id}}\",\"waste_id\":\"{{confirm_canceled_id}}\",\"amount\":\"50000.00\"}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 201', function () { pm.response.to.have.status(201); });",
+                  "pm.test('JSON content type', function () { pm.expect(pm.response.headers.get('Content-Type')).to.eql('application/json'); });",
+                  "if (pm.response.code === 201) pm.collectionVariables.set('confirm_failed_id', pm.response.json().data.id);"
+                ]
+              }
+            }
+          ],
+          "response": [
+            {
+              "name": "Created",
+              "status": "Created",
+              "code": 201,
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "body": "{\n  \"data\": {\n    \"id\": \"30000000-0000-4000-8000-000000000002\",\n    \"household_id\": \"10000000-0000-4000-8000-000000000001\",\n    \"waste_id\": \"20000000-0000-4000-8000-000000000002\",\n    \"amount\": \"50000.00\",\n    \"payment_date\": null,\n    \"status\": \"pending\",\n    \"proof_file_url\": null,\n    \"created_at\": \"2026-10-18T09:00:00Z\",\n    \"updated_at\": \"2026-10-18T09:00:00Z\"\n  }\n}"
+            }
+          ]
+        },
+        {
+          "name": "Cancel and fail second invoice",
+          "request": {
+            "method": "PUT",
+            "header": [],
+            "url": "{{base_url}}/api/pickups/{{confirm_canceled_id}}/cancel",
+            "description": ""
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 200', function () { pm.response.to.have.status(200); });",
+                  "pm.test('JSON content type', function () { pm.expect(pm.response.headers.get('Content-Type')).to.eql('application/json'); });"
+                ]
+              }
+            }
+          ],
+          "response": [
+            {
+              "name": "OK",
+              "status": "OK",
+              "code": 200,
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "body": "{\n  \"data\": {\n    \"id\": \"20000000-0000-4000-8000-000000000002\",\n    \"household_id\": \"10000000-0000-4000-8000-000000000001\",\n    \"type\": \"paper\",\n    \"status\": \"canceled\",\n    \"pickup_date\": null,\n    \"safety_check\": null,\n    \"created_at\": \"2026-10-18T09:00:00Z\",\n    \"updated_at\": \"2026-10-18T09:00:00Z\"\n  }\n}"
+            }
+          ]
+        },
+        {
+          "name": "Reject confirmation of failed invoice",
+          "request": {
+            "method": "PUT",
+            "header": [],
+            "url": "{{base_url}}/api/payments/{{confirm_failed_id}}/confirm",
+            "description": "Only pending payment can be confirmed",
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "proof_file",
+                  "type": "file",
+                  "src": "postman/fixtures/proof.pdf"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 409', function () { pm.response.to.have.status(409); });",
+                  "pm.test('JSON content type', function () { pm.expect(pm.response.headers.get('Content-Type')).to.eql('application/json'); });",
+                  "pm.test('Stable error code', function () { pm.expect(pm.response.json().error.code).to.eql('payment_not_pending'); });"
+                ]
+              }
+            }
+          ],
+          "response": [
+            {
+              "name": "Conflict",
+              "status": "Conflict",
+              "code": 409,
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "body": "{\n  \"error\": {\n    \"code\": \"payment_not_pending\",\n    \"message\": \"Only pending payment can be confirmed\"\n  }\n}"
+            }
+          ]
+        },
+        {
+          "name": "Reject missing proof file",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "multipart/form-data; boundary=missing"
+              }
+            ],
+            "url": "{{base_url}}/api/payments/{{confirm_payment_id}}/confirm",
+            "description": "Input validation failed",
+            "body": {
+              "mode": "raw",
+              "raw": "--missing--\r\n"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 422', function () { pm.response.to.have.status(422); });",
+                  "pm.test('JSON content type', function () { pm.expect(pm.response.headers.get('Content-Type')).to.eql('application/json'); });",
+                  "pm.test('Stable error code', function () { pm.expect(pm.response.json().error.code).to.eql('validation_failed'); });"
+                ]
+              }
+            }
+          ],
+          "response": [
+            {
+              "name": "Unprocessable Entity",
+              "status": "Unprocessable Entity",
+              "code": 422,
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "body": "{\n  \"error\": {\n    \"code\": \"validation_failed\",\n    \"message\": \"Input validation failed\",\n    \"fields\": {\n      \"proof_file\": \"Proof file is required\"\n    }\n  }\n}"
+            }
+          ]
+        },
+        {
+          "name": "Reject unsupported proof contents",
+          "request": {
+            "method": "PUT",
+            "header": [],
+            "url": "{{base_url}}/api/payments/{{confirm_payment_id}}/confirm",
+            "description": "Proof file must contain JPEG, PNG, or PDF content",
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "proof_file",
+                  "type": "file",
+                  "src": "postman/fixtures/unsupported.txt"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 415', function () { pm.response.to.have.status(415); });",
+                  "pm.test('JSON content type', function () { pm.expect(pm.response.headers.get('Content-Type')).to.eql('application/json'); });",
+                  "pm.test('Stable error code', function () { pm.expect(pm.response.json().error.code).to.eql('unsupported_proof'); });"
+                ]
+              }
+            }
+          ],
+          "response": [
+            {
+              "name": "Unsupported Media Type",
+              "status": "Unsupported Media Type",
+              "code": 415,
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "body": "{\n  \"error\": {\n    \"code\": \"unsupported_proof\",\n    \"message\": \"Proof file must contain JPEG, PNG, or PDF content\"\n  }\n}"
+            }
+          ]
+        },
+        {
+          "name": "Confirm payment with PDF proof",
+          "request": {
+            "method": "PUT",
+            "header": [],
+            "url": "{{base_url}}/api/payments/{{confirm_payment_id}}/confirm",
+            "description": "Exactly one proof_file. JPEG/PNG/PDF content signature, <=5 MiB. Sets paid/payment_date/path; repeated confirmation conflicts.",
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "proof_file",
+                  "type": "file",
+                  "src": "postman/fixtures/proof.pdf"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 200', function () { pm.response.to.have.status(200); });",
+                  "pm.test('JSON content type', function () { pm.expect(pm.response.headers.get('Content-Type')).to.eql('application/json'); });",
+                  "pm.test('Paid with local proof', function () { const p = pm.response.json().data; pm.expect(p.status).to.eql('paid'); pm.expect(p.id).to.eql(pm.collectionVariables.get('confirm_payment_id')); pm.expect(p.payment_date).to.match(/Z$/); pm.expect(p.proof_file_url).to.match(/^uploads\\/[0-9a-f-]{36}\\.pdf$/); });",
+                  "if (pm.response.code === 200) { pm.collectionVariables.set('confirm_date', pm.response.json().data.payment_date); pm.collectionVariables.set('confirm_proof', pm.response.json().data.proof_file_url); }",
+                  "if (pm.response.code === 200) { const parts = pm.response.json().data.payment_date.slice(0, -1).split('.'); const nanos = Number((parts[1] || '').padEnd(9, '0')) + 1; pm.collectionVariables.set('confirm_after_date', parts[0] + '.' + String(nanos).padStart(9, '0') + 'Z'); }"
+                ]
+              }
+            }
+          ],
+          "response": [
+            {
+              "name": "OK",
+              "status": "OK",
+              "code": 200,
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "body": "{\n  \"data\": {\n    \"id\": \"30000000-0000-4000-8000-000000000001\",\n    \"household_id\": \"10000000-0000-4000-8000-000000000001\",\n    \"waste_id\": \"20000000-0000-4000-8000-000000000001\",\n    \"amount\": \"50000.00\",\n    \"payment_date\": \"2026-10-18T10:00:00Z\",\n    \"status\": \"paid\",\n    \"proof_file_url\": \"uploads/92d6cf07-b478-4198-a160-d204dc6a85df.pdf\",\n    \"created_at\": \"2026-10-18T09:00:00Z\",\n    \"updated_at\": \"2026-10-18T10:00:00Z\"\n  }\n}"
+            }
+          ]
+        },
+        {
+          "name": "Reject repeated confirmation",
+          "request": {
+            "method": "PUT",
+            "header": [],
+            "url": "{{base_url}}/api/payments/{{confirm_payment_id}}/confirm",
+            "description": "Only pending payment can be confirmed",
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "proof_file",
+                  "type": "file",
+                  "src": "postman/fixtures/proof.pdf"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 409', function () { pm.response.to.have.status(409); });",
+                  "pm.test('JSON content type', function () { pm.expect(pm.response.headers.get('Content-Type')).to.eql('application/json'); });",
+                  "pm.test('Stable error code', function () { pm.expect(pm.response.json().error.code).to.eql('payment_not_pending'); });"
+                ]
+              }
+            }
+          ],
+          "response": [
+            {
+              "name": "Conflict",
+              "status": "Conflict",
+              "code": 409,
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "body": "{\n  \"error\": {\n    \"code\": \"payment_not_pending\",\n    \"message\": \"Only pending payment can be confirmed\"\n  }\n}"
+            }
+          ]
+        },
+        {
+          "name": "Filter paid from exact payment date",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{base_url}}/api/payments?household_id={{confirm_household_id}}&status=paid&date_from={{confirm_date}}",
+            "description": "Inclusive beginning, filters payment_date; preserves timestamp precision."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 200', function () { pm.response.to.have.status(200); });",
+                  "pm.test('JSON content type', function () { pm.expect(pm.response.headers.get('Content-Type')).to.eql('application/json'); });",
+                  "pm.test('Inclusive lower bound and original proof', function () { const b = pm.response.json(); pm.expect(b.meta.total).to.eql(1); pm.expect(b.data).to.have.lengthOf(1); pm.expect(b.data[0].payment_date).to.eql(pm.collectionVariables.get('confirm_date')); pm.expect(b.data[0].proof_file_url).to.eql(pm.collectionVariables.get('confirm_proof')); });"
+                ]
+              }
+            }
+          ],
+          "response": [
+            {
+              "name": "OK",
+              "status": "OK",
+              "code": 200,
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "body": "{\n  \"data\": [\n    {\n      \"id\": \"30000000-0000-4000-8000-000000000001\",\n      \"household_id\": \"10000000-0000-4000-8000-000000000001\",\n      \"waste_id\": \"20000000-0000-4000-8000-000000000001\",\n      \"amount\": \"50000.00\",\n      \"payment_date\": \"2026-10-18T10:00:00Z\",\n      \"status\": \"paid\",\n      \"proof_file_url\": \"uploads/92d6cf07-b478-4198-a160-d204dc6a85df.pdf\",\n      \"created_at\": \"2026-10-18T09:00:00Z\",\n      \"updated_at\": \"2026-10-18T10:00:00Z\"\n    }\n  ],\n  \"meta\": {\n    \"page\": 1,\n    \"limit\": 20,\n    \"total\": 1\n  }\n}"
+            }
+          ]
+        },
+        {
+          "name": "Filter before exact payment date",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{base_url}}/api/payments?household_id={{confirm_household_id}}&date_to={{confirm_date}}",
+            "description": "Exclusive ending; failed invoice with NULL payment_date is also excluded."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 200', function () { pm.response.to.have.status(200); });",
+                  "pm.test('JSON content type', function () { pm.expect(pm.response.headers.get('Content-Type')).to.eql('application/json'); });",
+                  "pm.test('Exclusive upper bound excludes payment', function () { const b = pm.response.json(); pm.expect(b.meta.total).to.eql(0); pm.expect(b.data).to.deep.eql([]); });"
+                ]
+              }
+            }
+          ],
+          "response": [
+            {
+              "name": "OK",
+              "status": "OK",
+              "code": 200,
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "body": "{\n  \"data\": [],\n  \"meta\": {\n    \"page\": 1,\n    \"limit\": 20,\n    \"total\": 0\n  }\n}"
+            }
+          ]
+        },
+        {
+          "name": "Reject equal date bounds",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{base_url}}/api/payments?date_from={{confirm_date}}&date_to={{confirm_date}}",
+            "description": "Status, household_id, and date bounds must each contain one valid value; date_from must precede date_to"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 400', function () { pm.response.to.have.status(400); });",
+                  "pm.test('JSON content type', function () { pm.expect(pm.response.headers.get('Content-Type')).to.eql('application/json'); });",
+                  "pm.test('Stable error code', function () { pm.expect(pm.response.json().error.code).to.eql('invalid_filter'); });"
+                ]
+              }
+            }
+          ],
+          "response": [
+            {
+              "name": "Bad Request",
+              "status": "Bad Request",
+              "code": 400,
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "body": "{\n  \"error\": {\n    \"code\": \"invalid_filter\",\n    \"message\": \"Query filters are invalid\"\n  }\n}"
+            }
+          ]
+        },
+        {
+          "name": "Reject malformed date filter",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{base_url}}/api/payments?date_from=tomorrow",
+            "description": "Status, household_id, and date bounds must each contain one valid value; date_from must precede date_to"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 400', function () { pm.response.to.have.status(400); });",
+                  "pm.test('JSON content type', function () { pm.expect(pm.response.headers.get('Content-Type')).to.eql('application/json'); });",
+                  "pm.test('Stable error code', function () { pm.expect(pm.response.json().error.code).to.eql('invalid_filter'); });"
+                ]
+              }
+            }
+          ],
+          "response": [
+            {
+              "name": "Bad Request",
+              "status": "Bad Request",
+              "code": 400,
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "body": "{\n  \"error\": {\n    \"code\": \"invalid_filter\",\n    \"message\": \"Query filters are invalid\"\n  }\n}"
+            }
+          ]
+        },
+        {
+          "name": "Nanosecond lower bound excludes earlier payment",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{base_url}}/api/payments?household_id={{confirm_household_id}}&date_from={{confirm_after_date}}",
+            "description": "Preserves nanosecond filter comparisons against stored microsecond timestamps."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 200', function () { pm.response.to.have.status(200); });",
+                  "pm.test('JSON content type', function () { pm.expect(pm.response.headers.get('Content-Type')).to.eql('application/json'); });",
+                  "pm.test('Precise boundary', function () { const b = pm.response.json(); pm.expect(b.meta.total).to.eql(0); pm.expect(b.data).to.have.lengthOf(0); });"
+                ]
+              }
+            }
+          ],
+          "response": [
+            {
+              "name": "OK",
+              "status": "OK",
+              "code": 200,
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "body": "{\n  \"data\": [],\n  \"meta\": {\n    \"page\": 1,\n    \"limit\": 20,\n    \"total\": 0\n  }\n}"
+            }
+          ]
+        },
+        {
+          "name": "Nanosecond upper bound includes earlier payment",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{base_url}}/api/payments?household_id={{confirm_household_id}}&date_to={{confirm_after_date}}",
+            "description": "Preserves nanosecond filter comparisons against stored microsecond timestamps."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 200', function () { pm.response.to.have.status(200); });",
+                  "pm.test('JSON content type', function () { pm.expect(pm.response.headers.get('Content-Type')).to.eql('application/json'); });",
+                  "pm.test('Precise boundary', function () { const b = pm.response.json(); pm.expect(b.meta.total).to.eql(1); pm.expect(b.data).to.have.lengthOf(1); });"
+                ]
+              }
+            }
+          ],
+          "response": [
+            {
+              "name": "OK",
+              "status": "OK",
+              "code": 200,
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "body": "{\n  \"data\": [\n    {\n      \"id\": \"30000000-0000-4000-8000-000000000001\",\n      \"household_id\": \"10000000-0000-4000-8000-000000000001\",\n      \"waste_id\": \"20000000-0000-4000-8000-000000000001\",\n      \"amount\": \"50000.00\",\n      \"payment_date\": \"2026-10-18T10:00:00Z\",\n      \"status\": \"paid\",\n      \"proof_file_url\": \"uploads/92d6cf07-b478-4198-a160-d204dc6a85df.pdf\",\n      \"created_at\": \"2026-10-18T09:00:00Z\",\n      \"updated_at\": \"2026-10-18T10:00:00Z\"\n    }\n  ],\n  \"meta\": {\n    \"page\": 1,\n    \"limit\": 20,\n    \"total\": 1\n  }\n}"
+            }
+          ]
+        },
+        {
+          "name": "Reject non-RFC3339 single digit hour",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{base_url}}/api/payments?date_from=2026-10-18T1:00:00Z",
+            "description": "Hour requires two digits; comma fractions and invalid offsets are also rejected."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 400', function () { pm.response.to.have.status(400); });",
+                  "pm.test('JSON content type', function () { pm.expect(pm.response.headers.get('Content-Type')).to.eql('application/json'); });",
+                  "pm.test('Stable error code', function () { pm.expect(pm.response.json().error.code).to.eql('invalid_filter'); });"
+                ]
+              }
+            }
+          ],
+          "response": [
+            {
+              "name": "Bad Request",
+              "status": "Bad Request",
+              "code": 400,
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "body": "{\n  \"error\": {\n    \"code\": \"invalid_filter\",\n    \"message\": \"Query filters are invalid\"\n  }\n}"
+            }
+          ]
+        },
+        {
+          "name": "Create pickup after payment",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{base_url}}/api/pickups",
+            "description": "No pending invoice remains: one is paid, the other failed.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\"household_id\":\"{{confirm_household_id}}\",\"type\":\"plastic\"}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 201', function () { pm.response.to.have.status(201); });",
+                  "pm.test('JSON content type', function () { pm.expect(pm.response.headers.get('Content-Type')).to.eql('application/json'); });",
+                  "if (pm.response.code === 201) pm.collectionVariables.set('confirm_new_pickup_id', pm.response.json().data.id);",
+                  "pm.test('Pending payment gate released', function () { pm.expect(pm.response.json().data.status).to.eql('pending'); });"
+                ]
+              }
+            }
+          ],
+          "response": [
+            {
+              "name": "Created",
+              "status": "Created",
+              "code": 201,
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "body": "{\n  \"data\": {\n    \"id\": \"20000000-0000-4000-8000-000000000003\",\n    \"household_id\": \"10000000-0000-4000-8000-000000000001\",\n    \"type\": \"plastic\",\n    \"status\": \"pending\",\n    \"pickup_date\": null,\n    \"safety_check\": null,\n    \"created_at\": \"2026-10-18T09:00:00Z\",\n    \"updated_at\": \"2026-10-18T09:00:00Z\"\n  }\n}"
+            }
+          ]
+        },
+        {
+          "name": "Cancel new unbilled fixture pickup",
+          "request": {
+            "method": "PUT",
+            "header": [],
+            "url": "{{base_url}}/api/pickups/{{confirm_new_pickup_id}}/cancel",
+            "description": ""
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 200', function () { pm.response.to.have.status(200); });",
+                  "pm.test('JSON content type', function () { pm.expect(pm.response.headers.get('Content-Type')).to.eql('application/json'); });"
+                ]
+              }
+            }
+          ],
+          "response": [
+            {
+              "name": "OK",
+              "status": "OK",
+              "code": 200,
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "body": "{\n  \"data\": {\n    \"id\": \"20000000-0000-4000-8000-000000000003\",\n    \"household_id\": \"10000000-0000-4000-8000-000000000001\",\n    \"type\": \"plastic\",\n    \"status\": \"canceled\",\n    \"pickup_date\": null,\n    \"safety_check\": null,\n    \"created_at\": \"2026-10-18T09:00:00Z\",\n    \"updated_at\": \"2026-10-18T09:00:00Z\"\n  }\n}"
             }
           ]
         }

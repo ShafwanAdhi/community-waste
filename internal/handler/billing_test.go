@@ -33,7 +33,7 @@ func (s billingServiceStub) Complete(c context.Context, id string) (domain.Picku
 	return s.complete(c, id)
 }
 func billingRouter(s BillingService) http.Handler {
-	return New(func(context.Context) error { return nil }, slog.New(slog.NewTextHandler(io.Discard, nil)), nil, nil, s)
+	return New(func(context.Context) error { return nil }, slog.New(slog.NewTextHandler(io.Discard, nil)), nil, nil, s, nil)
 }
 
 func TestBillingHTTPContract(t *testing.T) {

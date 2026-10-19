@@ -18,6 +18,7 @@ import (
 	"community-waste/internal/repository/postgres"
 	"community-waste/internal/server"
 	"community-waste/internal/service"
+	"community-waste/internal/storage"
 )
 
 func main() {
@@ -80,9 +81,10 @@ func run(ctx context.Context, args []string, logger *slog.Logger) error {
 	households := service.NewHousehold(postgres.NewHousehold(pool))
 	pickups := service.NewPickup(postgres.NewPickup(pool))
 	billing := service.NewBilling(postgres.NewBilling(pool))
+	confirmation := service.NewConfirmation(postgres.NewConfirmation(pool), storage.NewLocalProof(cfg.UploadDir))
 	srv := &http.Server{
 		Addr:              cfg.HTTPAddr,
-		Handler:           handler.New(pool.Ping, logger, households, pickups, billing),
+		Handler:           handler.New(pool.Ping, logger, households, pickups, billing, confirmation),
 		ReadHeaderTimeout: 5 * time.Second,
 		ReadTimeout:       15 * time.Second,
 		WriteTimeout:      15 * time.Second,

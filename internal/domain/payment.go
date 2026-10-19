@@ -22,7 +22,16 @@ type Payment struct {
 	UpdatedAt    time.Time     `json:"updated_at"`
 }
 
+const MaxProofSize = 5 * 1024 * 1024
+
+type PaymentReference struct {
+	HouseholdID string
+	WasteID     string
+}
+
 type PaymentFilter struct {
+	DateFrom    *time.Time
+	DateTo      *time.Time
 	Pagination  Pagination
 	Status      PaymentStatus
 	HouseholdID string

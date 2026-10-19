@@ -44,12 +44,12 @@ func (r *Billing) List(ctx context.Context, filter domain.PaymentFilter) (domain
 	if filter.HouseholdID != "" {
 		household = filter.HouseholdID
 	}
-	const where = ` WHERE ($1::text='' OR status=$1) AND ($2::uuid IS NULL OR household_id=$2)`
+	const where = ` WHERE ($1::text='' OR status=$1) AND ($2::uuid IS NULL OR household_id=$2) AND ($3::timestamptz IS NULL OR payment_date >= $3) AND ($4::timestamptz IS NULL OR payment_date < $4)`
 	page := domain.PaymentPage{Items: make([]domain.Payment, 0)}
-	if err := tx.QueryRow(ctx, "SELECT count(*) FROM payments"+where, string(filter.Status), household).Scan(&page.Total); err != nil {
+	if err := tx.QueryRow(ctx, "SELECT count(*) FROM payments"+where, string(filter.Status), household, filter.DateFrom, filter.DateTo).Scan(&page.Total); err != nil {
 		return domain.PaymentPage{}, fmt.Errorf("count payments: %w", err)
 	}
-	rows, err := tx.Query(ctx, "SELECT "+paymentColumns+" FROM payments"+where+" ORDER BY created_at DESC,id DESC LIMIT $3 OFFSET $4", string(filter.Status), household, filter.Pagination.Limit, (filter.Pagination.Page-1)*filter.Pagination.Limit)
+	rows, err := tx.Query(ctx, "SELECT "+paymentColumns+" FROM payments"+where+" ORDER BY created_at DESC,id DESC LIMIT $5 OFFSET $6", string(filter.Status), household, filter.DateFrom, filter.DateTo, filter.Pagination.Limit, (filter.Pagination.Page-1)*filter.Pagination.Limit)
 	if err != nil {
 		return domain.PaymentPage{}, fmt.Errorf("list payments: %w", err)
 	}

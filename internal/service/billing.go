@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"strings"
+	"time"
 
 	"community-waste/internal/domain"
 )
@@ -111,6 +112,17 @@ func (s *Billing) List(ctx context.Context, filter domain.PaymentFilter) (domain
 	if (filter.Status != "" && !validPaymentStatus(filter.Status)) || (filter.HouseholdID != "" && !validUUID(filter.HouseholdID)) {
 		return domain.PaymentPage{}, domain.ErrInvalidFilter
 	}
+	if filter.DateFrom != nil && filter.DateTo != nil && !filter.DateFrom.Before(*filter.DateTo) {
+		return domain.PaymentPage{}, domain.ErrInvalidFilter
+	}
+	if filter.DateFrom != nil {
+		date := paymentDateBound(*filter.DateFrom)
+		filter.DateFrom = &date
+	}
+	if filter.DateTo != nil {
+		date := paymentDateBound(*filter.DateTo)
+		filter.DateTo = &date
+	}
 	return s.repository.List(ctx, filter)
 }
 
@@ -149,4 +161,15 @@ func validPaymentStatus(status domain.PaymentStatus) bool {
 	default:
 		return false
 	}
+}
+
+// Stored timestamps are discrete microseconds. Ceiling preserves both >= and <
+// comparisons when a caller supplies a finer, nanosecond boundary.
+func paymentDateBound(date time.Time) time.Time {
+	date = date.UTC()
+	bound := date.Truncate(time.Microsecond)
+	if bound.Before(date) {
+		bound = bound.Add(time.Microsecond)
+	}
+	return bound
 }

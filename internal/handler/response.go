@@ -54,6 +54,12 @@ func writeFailure(w http.ResponseWriter, r *http.Request, err error, logger *slo
 		writeError(w, http.StatusBadRequest, "invalid_id", "ID must be a hyphenated UUID")
 	case errors.Is(err, domain.ErrInvalidPagination):
 		writeError(w, http.StatusBadRequest, "invalid_pagination", "Page and limit must be positive integers; limit must not exceed 100 and offset must fit int64")
+	case errors.Is(err, domain.ErrProofTooLarge):
+		writeError(w, http.StatusRequestEntityTooLarge, "proof_too_large", "Proof file must not exceed 5 MiB")
+	case errors.Is(err, domain.ErrUnsupportedProof):
+		writeError(w, http.StatusUnsupportedMediaType, "unsupported_proof", "Proof file must contain JPEG, PNG, or PDF content")
+	case errors.Is(err, domain.ErrPaymentNotPending):
+		writeError(w, http.StatusConflict, "payment_not_pending", "Only pending payment can be confirmed")
 	case errors.Is(err, domain.ErrHouseholdMismatch):
 		writeError(w, http.StatusConflict, "household_mismatch", "Household does not own this pickup")
 	case errors.Is(err, domain.ErrPaymentExists):
@@ -61,7 +67,7 @@ func writeFailure(w http.ResponseWriter, r *http.Request, err error, logger *slo
 	case errors.Is(err, domain.ErrPaymentConflict):
 		writeError(w, http.StatusConflict, "payment_conflict", "Existing payment is inconsistent with pickup billing")
 	case errors.Is(err, domain.ErrInvalidFilter):
-		writeError(w, http.StatusBadRequest, "invalid_filter", "Status and household_id must each contain one valid value")
+		writeError(w, http.StatusBadRequest, "invalid_filter", "Query filters are invalid")
 	case errors.Is(err, domain.ErrPendingPayment):
 		writeError(w, http.StatusConflict, "pending_payment", "Household has a pending payment")
 	case errors.Is(err, domain.ErrInvalidTransition):

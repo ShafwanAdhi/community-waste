@@ -65,3 +65,18 @@ func TestLoadRejectsInvalidSettings(t *testing.T) {
 		})
 	}
 }
+
+func TestLoadUploadDirectory(t *testing.T) {
+	setEnvironment(t)
+	t.Setenv("UPLOAD_DIR", "")
+	cfg, err := Load()
+	if err != nil || cfg.UploadDir != "uploads" {
+		t.Fatalf("default: %+v %v", cfg, err)
+	}
+	t.Setenv("UPLOAD_DIR", "/app/custom uploads")
+	cfg, err = Load()
+	if err != nil || cfg.UploadDir != "/app/custom uploads" {
+		t.Fatalf("override: %+v %v", cfg, err)
+	}
+
+}
