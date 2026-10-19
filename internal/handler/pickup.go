@@ -84,7 +84,7 @@ func (h pickupHandler) schedule(w http.ResponseWriter, r *http.Request) {
 		writeFailure(w, r, err, h.logger)
 		return
 	}
-	date, err := time.Parse(time.RFC3339, input.PickupDate)
+	date, err := parseTimestamp(input.PickupDate)
 	if err != nil {
 		writeFailure(w, r, &domain.ValidationError{Fields: map[string]string{"pickup_date": "Pickup date must use RFC3339"}}, h.logger)
 		return

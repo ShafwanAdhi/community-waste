@@ -74,7 +74,7 @@ func (h billingHandler) list(w http.ResponseWriter, r *http.Request) {
 			writeFailure(w, r, domain.ErrInvalidFilter, h.logger)
 			return
 		}
-		date, err := parsePaymentTimestamp(values[0])
+		date, err := parseTimestamp(values[0])
 		if err != nil {
 			writeFailure(w, r, domain.ErrInvalidFilter, h.logger)
 			return

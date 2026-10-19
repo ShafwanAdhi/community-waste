@@ -55,7 +55,7 @@ func TestPickupHTTPContract(t *testing.T) {
 			return domain.PickupPage{Total: 3}, nil
 		},
 		schedule: func(_ context.Context, id string, d time.Time, b *bool) (domain.Pickup, error) {
-			if id != householdID || d.Format(time.RFC3339) != "2027-01-01T08:00:00+07:00" || b == nil || !*b {
+			if id != householdID || !d.Equal(time.Date(2027, 1, 1, 1, 0, 0, 0, time.UTC)) || b == nil || !*b {
 				t.Fatalf("schedule: %s %v %v", id, d, b)
 			}
 			utc := d.UTC()
@@ -162,6 +162,41 @@ func TestPickupHTTPIntegration(t *testing.T) {
 		res := householdRequest(h, tc.method, tc.path, tc.payload, "application/json")
 		if res.Code != tc.status {
 			t.Fatalf("%s %s: %d %s", tc.method, tc.path, res.Code, res.Body.String())
+		}
+	}
+}
+
+func TestScheduleRejectsNonRFC3339Timestamp(t *testing.T) {
+	h := pickupRouter(pickupServiceStub{schedule: func(context.Context, string, time.Time, *bool) (domain.Pickup, error) {
+		t.Error("invalid timestamp reached service")
+		return domain.Pickup{}, nil
+	}})
+	for _, value := range []string{
+		"2027-01-01T8:00:00Z", "2027-01-01T08:00:00,1Z",
+		"2027-01-01T08:00:00+24:00", "2027-01-01T08:00:00+07:60",
+		"2027-01-01T08:00:00.1234567890Z",
+		"9999-12-31T23:59:59-23:59", "0000-01-01T00:00:00+23:59",
+	} {
+		t.Run(value, func(t *testing.T) {
+			res := householdRequest(h, "PUT", "/api/pickups/"+householdID+"/schedule", `{"pickup_date":"`+value+`"}`, "application/json")
+			if res.Code != 422 || !strings.Contains(res.Body.String(), `"pickup_date"`) {
+				t.Fatalf("got %d %s", res.Code, res.Body.String())
+			}
+		})
+	}
+}
+
+func TestTimestampPreservesRepresentableUTCValues(t *testing.T) {
+	for _, value := range []string{"0000-01-01T00:00:00Z", "9999-12-31T23:59:59.999999999Z", "2027-01-01T08:00:00.123456789+07:00"} {
+		parsed, err := parseTimestamp(value)
+		if err != nil {
+			t.Fatalf("%s: %v", value, err)
+		}
+		if parsed.Location() != time.UTC {
+			t.Fatalf("timestamp not normalized: %v", parsed)
+		}
+		if _, err := parsed.MarshalJSON(); err != nil {
+			t.Fatalf("timestamp cannot be returned: %v", err)
 		}
 	}
 }

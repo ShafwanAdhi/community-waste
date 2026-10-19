@@ -2,6 +2,7 @@ package server
 
 import (
 	"context"
+	"errors"
 	"io"
 	"net"
 	"net/http"
@@ -67,5 +68,55 @@ func TestServeDrainsRequestOnCancellation(t *testing.T) {
 	if err == nil {
 		conn.Close()
 		t.Fatal("listener still accepts connections")
+	}
+}
+
+func TestServeClosesRequestAfterShutdownDeadline(t *testing.T) {
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { listener.Close() })
+	started, stopped := make(chan struct{}), make(chan struct{})
+	srv := &http.Server{Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		close(started)
+		<-r.Context().Done()
+		close(stopped)
+	})}
+	t.Cleanup(func() { srv.Close() })
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	done := make(chan error, 1)
+	go func() { done <- Serve(ctx, srv, listener, 20*time.Millisecond) }()
+	clientDone := make(chan error, 1)
+	go func() {
+		client := &http.Client{Timeout: 3 * time.Second}
+		res, err := client.Get("http://" + listener.Addr().String())
+		if res != nil {
+			res.Body.Close()
+		}
+		clientDone <- err
+	}()
+	select {
+	case <-started:
+	case <-time.After(3 * time.Second):
+		t.Fatal("request did not start")
+	}
+	cancel()
+	select {
+	case err := <-done:
+		if !errors.Is(err, context.DeadlineExceeded) {
+			t.Fatalf("shutdown result: %v", err)
+		}
+	case <-time.After(3 * time.Second):
+		t.Fatal("server did not force close")
+	}
+	select {
+	case <-stopped:
+	case <-time.After(3 * time.Second):
+		t.Fatal("request context was not canceled")
+	}
+	if err := <-clientDone; err == nil {
+		t.Fatal("unfinished response should be interrupted")
 	}
 }
