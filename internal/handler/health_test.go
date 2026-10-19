@@ -22,7 +22,7 @@ func TestHealth(t *testing.T) {
 		{"database unavailable", errors.New("password=private-pass"), http.StatusServiceUnavailable},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			h := New(func(context.Context) error { return tc.checkErr }, slog.New(slog.NewTextHandler(io.Discard, nil)), nil, nil, nil, nil)
+			h := New(func(context.Context) error { return tc.checkErr }, slog.New(slog.NewTextHandler(io.Discard, nil)), nil, nil, nil, nil, nil)
 			rec := httptest.NewRecorder()
 			h.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/healthz", nil))
 			if rec.Code != tc.wantStatus {
@@ -56,7 +56,7 @@ func TestHealth(t *testing.T) {
 }
 
 func TestRoutingErrorsAreJSON(t *testing.T) {
-	h := New(func(context.Context) error { return nil }, slog.New(slog.NewTextHandler(io.Discard, nil)), nil, nil, nil, nil)
+	h := New(func(context.Context) error { return nil }, slog.New(slog.NewTextHandler(io.Discard, nil)), nil, nil, nil, nil, nil)
 	for _, tc := range []struct {
 		method, path string
 		status       int
@@ -90,7 +90,7 @@ func TestHealthPropagatesRequestCancellation(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 	var received error
-	h := New(func(ctx context.Context) error { received = ctx.Err(); return received }, slog.New(slog.NewTextHandler(io.Discard, nil)), nil, nil, nil, nil)
+	h := New(func(ctx context.Context) error { received = ctx.Err(); return received }, slog.New(slog.NewTextHandler(io.Discard, nil)), nil, nil, nil, nil, nil)
 	h.ServeHTTP(httptest.NewRecorder(), httptest.NewRequest(http.MethodGet, "/healthz", nil).WithContext(ctx))
 	if !errors.Is(received, context.Canceled) {
 		t.Fatalf("check received cancellation %v", received)

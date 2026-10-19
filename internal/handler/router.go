@@ -6,7 +6,7 @@ import (
 	"net/http"
 )
 
-func New(check func(context.Context) error, logger *slog.Logger, households HouseholdService, pickups PickupService, billing BillingService, confirmation ConfirmationService) http.Handler {
+func New(check func(context.Context) error, logger *slog.Logger, households HouseholdService, pickups PickupService, billing BillingService, confirmation ConfirmationService, reports ReportService) http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /healthz", healthHandler(check, logger))
 	mux.HandleFunc("/healthz", methodNotAllowed("GET, HEAD"))
@@ -34,6 +34,11 @@ func New(check func(context.Context) error, logger *slog.Logger, households Hous
 	c := confirmationHandler{service: confirmation, logger: logger}
 	mux.HandleFunc("PUT /api/payments/{id}/confirm", c.confirm)
 	mux.HandleFunc("/api/payments/{id}/confirm", methodNotAllowed("PUT"))
+	r := reportHandler{service: reports, logger: logger}
+	mux.HandleFunc("GET /api/reports/waste-summary", r.waste)
+	mux.HandleFunc("GET /api/reports/payment-summary", r.payment)
+	mux.HandleFunc("/api/reports/waste-summary", methodNotAllowed("GET, HEAD"))
+	mux.HandleFunc("/api/reports/payment-summary", methodNotAllowed("GET, HEAD"))
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusNotFound, "not_found", "Endpoint was not found")
 	})

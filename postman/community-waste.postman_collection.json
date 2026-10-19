@@ -2,7 +2,7 @@
   "info": {
     "_postman_id": "a25dcb6a-6327-45a3-b7a8-9dc3a49c9507",
     "name": "Community Waste Collection API",
-    "description": "Household, pickup, billing and payment confirmation checkpoint. Run from repository root with Docker Compose active. Upload fixtures are under postman/fixtures. Dedicated historical fixtures/proofs remain; existing records are preserved. Reports, seed and public docs follow later.",
+    "description": "All 14 API endpoints: household, pickup, billing, proof confirmation and reports. Run from repository root with Docker Compose active. Upload fixtures under postman/fixtures. Dedicated historical records/proofs remain; existing records preserved. Reporting asserts deltas against existing data, so seed is optional. Published documentation and final delivery audit follow next checkpoint.",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "variable": [
@@ -98,6 +98,31 @@
     },
     {
       "key": "confirm_after_date",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "report_waste_before",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "report_payment_before",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "report_household_id",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "report_pickup_id",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "report_invoice_id",
       "value": "",
       "type": "string"
     }
@@ -3738,6 +3763,551 @@
                 }
               ],
               "body": "{\n  \"data\": {\n    \"id\": \"20000000-0000-4000-8000-000000000003\",\n    \"household_id\": \"10000000-0000-4000-8000-000000000001\",\n    \"type\": \"plastic\",\n    \"status\": \"canceled\",\n    \"pickup_date\": null,\n    \"safety_check\": null,\n    \"created_at\": \"2026-10-18T09:00:00Z\",\n    \"updated_at\": \"2026-10-18T09:00:00Z\"\n  }\n}"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Reporting",
+      "description": "Captures global baselines, creates one dedicated pickup, completes/confirms its invoice and checks exact count/money changes. No fixed global counts assumed. Retains its paid pickup/invoice/proof history. Run in order without concurrent external writes.",
+      "item": [
+        {
+          "name": "Capture waste report baseline",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{base_url}}/api/reports/waste-summary",
+            "description": "Global populated type/status combinations, sorted alphabetically. Empty DB returns an empty array."
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "[\"report_waste_before\", \"report_payment_before\", \"report_household_id\", \"report_pickup_id\", \"report_invoice_id\"].forEach(function (key) { pm.collectionVariables.unset(key); });"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 200', function () { pm.response.to.have.status(200); });",
+                  "pm.test('JSON content type', function () { pm.expect(pm.response.headers.get('Content-Type')).to.eql('application/json'); });",
+                  "pm.test('Populated sorted groups', function () { const b = pm.response.json(); pm.expect(b.data).to.be.an('array'); pm.expect(b).not.to.have.property('meta'); const keys = b.data.map(function (r) { pm.expect(r.count).to.be.above(0); return r.type + '/' + r.status; }); pm.expect(keys).to.deep.eql(keys.slice().sort()); pm.expect(new Set(keys).size).to.eql(keys.length); });",
+                  "if (pm.response.code === 200) pm.collectionVariables.set('report_waste_before', JSON.stringify(pm.response.json().data));"
+                ]
+              }
+            }
+          ],
+          "response": [
+            {
+              "name": "OK",
+              "status": "OK",
+              "code": 200,
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "body": "{\n  \"data\": []\n}"
+            }
+          ]
+        },
+        {
+          "name": "Capture payment report baseline",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{base_url}}/api/reports/payment-summary",
+            "description": "All statuses included, even zeros. Revenue is paid only. Amounts are exact decimal strings."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 200', function () { pm.response.to.have.status(200); });",
+                  "pm.test('JSON content type', function () { pm.expect(pm.response.headers.get('Content-Type')).to.eql('application/json'); });",
+                  "pm.test('Statuses and paid-only revenue', function () { const b = pm.response.json(); pm.expect(b).not.to.have.property('meta'); pm.expect(b.data.statuses.map(function (r) { return r.status; })).to.deep.eql(['pending', 'paid', 'failed']); b.data.statuses.forEach(function (r) { pm.expect(r.count).to.be.at.least(0); pm.expect(r.amount).to.match(/^\\d+\\.\\d{2}$/); }); pm.expect(b.data.total_revenue).to.eql(b.data.statuses[1].amount); });",
+                  "if (pm.response.code === 200) pm.collectionVariables.set('report_payment_before', JSON.stringify(pm.response.json().data));"
+                ]
+              }
+            }
+          ],
+          "response": [
+            {
+              "name": "OK",
+              "status": "OK",
+              "code": 200,
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "body": "{\n  \"data\": {\n    \"statuses\": [\n      {\n        \"status\": \"pending\",\n        \"count\": 0,\n        \"amount\": \"0.00\"\n      },\n      {\n        \"status\": \"paid\",\n        \"count\": 0,\n        \"amount\": \"0.00\"\n      },\n      {\n        \"status\": \"failed\",\n        \"count\": 0,\n        \"amount\": \"0.00\"\n      }\n    ],\n    \"total_revenue\": \"0.00\"\n  }\n}"
+            }
+          ]
+        },
+        {
+          "name": "Create report household",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{base_url}}/api/households",
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\"owner_name\":\"Postman reports\",\"address\":\"Dedicated report delta fixture\"}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 201', function () { pm.response.to.have.status(201); });",
+                  "pm.test('JSON content type', function () { pm.expect(pm.response.headers.get('Content-Type')).to.eql('application/json'); });",
+                  "if (pm.response.code === 201) pm.collectionVariables.set('report_household_id', pm.response.json().data.id);"
+                ]
+              }
+            }
+          ],
+          "response": [
+            {
+              "name": "Created",
+              "status": "Created",
+              "code": 201,
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "body": "{\n  \"data\": {\n    \"id\": \"10000000-0000-4000-8000-000000000001\",\n    \"owner_name\": \"Postman reports\",\n    \"address\": \"Dedicated report delta fixture\",\n    \"created_at\": \"2026-10-19T05:00:00Z\",\n    \"updated_at\": \"2026-10-19T05:00:00Z\"\n  }\n}"
+            }
+          ]
+        },
+        {
+          "name": "Create report pickup",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{base_url}}/api/pickups",
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\"household_id\":\"{{report_household_id}}\",\"type\":\"organic\"}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 201', function () { pm.response.to.have.status(201); });",
+                  "pm.test('JSON content type', function () { pm.expect(pm.response.headers.get('Content-Type')).to.eql('application/json'); });",
+                  "if (pm.response.code === 201) pm.collectionVariables.set('report_pickup_id', pm.response.json().data.id);"
+                ]
+              }
+            }
+          ],
+          "response": [
+            {
+              "name": "Created",
+              "status": "Created",
+              "code": 201,
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "body": "{\n  \"data\": {\n    \"id\": \"20000000-0000-4000-8000-000000000001\",\n    \"household_id\": \"10000000-0000-4000-8000-000000000001\",\n    \"type\": \"organic\",\n    \"status\": \"pending\",\n    \"pickup_date\": null,\n    \"safety_check\": null,\n    \"created_at\": \"2026-10-19T05:00:00Z\",\n    \"updated_at\": \"2026-10-19T05:00:00Z\"\n  }\n}"
+            }
+          ]
+        },
+        {
+          "name": "Verify waste pending delta",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{base_url}}/api/reports/waste-summary",
+            "description": ""
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 200', function () { pm.response.to.have.status(200); });",
+                  "pm.test('JSON content type', function () { pm.expect(pm.response.headers.get('Content-Type')).to.eql('application/json'); });",
+                  "pm.test('New organic pending counted', function () { const before = JSON.parse(pm.collectionVariables.get('report_waste_before')); const now = pm.response.json().data; const count = function (rows) { const r = rows.find(function (r) { return r.type === 'organic' && r.status === 'pending'; }); return r ? r.count : 0; }; pm.expect(count(now)).to.eql(count(before) + 1); });"
+                ]
+              }
+            }
+          ],
+          "response": [
+            {
+              "name": "OK",
+              "status": "OK",
+              "code": 200,
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "body": "{\n  \"data\": [\n    {\n      \"type\": \"organic\",\n      \"status\": \"pending\",\n      \"count\": 1\n    }\n  ]\n}"
+            }
+          ]
+        },
+        {
+          "name": "Schedule report pickup",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{base_url}}/api/pickups/{{report_pickup_id}}/schedule",
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\"pickup_date\":\"{{report_future}}\"}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.variables.set('report_future', new Date(Date.now() + 86400000).toISOString());"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 200', function () { pm.response.to.have.status(200); });",
+                  "pm.test('JSON content type', function () { pm.expect(pm.response.headers.get('Content-Type')).to.eql('application/json'); });"
+                ]
+              }
+            }
+          ],
+          "response": [
+            {
+              "name": "OK",
+              "status": "OK",
+              "code": 200,
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "body": "{\n  \"data\": {\n    \"id\": \"20000000-0000-4000-8000-000000000001\",\n    \"household_id\": \"10000000-0000-4000-8000-000000000001\",\n    \"type\": \"organic\",\n    \"status\": \"scheduled\",\n    \"pickup_date\": \"2026-10-20T01:00:00Z\",\n    \"safety_check\": null,\n    \"created_at\": \"2026-10-19T05:00:00Z\",\n    \"updated_at\": \"2026-10-19T05:00:00Z\"\n  }\n}"
+            }
+          ]
+        },
+        {
+          "name": "Complete report pickup",
+          "request": {
+            "method": "PUT",
+            "header": [],
+            "url": "{{base_url}}/api/pickups/{{report_pickup_id}}/complete",
+            "description": ""
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 200', function () { pm.response.to.have.status(200); });",
+                  "pm.test('JSON content type', function () { pm.expect(pm.response.headers.get('Content-Type')).to.eql('application/json'); });"
+                ]
+              }
+            }
+          ],
+          "response": [
+            {
+              "name": "OK",
+              "status": "OK",
+              "code": 200,
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "body": "{\n  \"data\": {\n    \"id\": \"20000000-0000-4000-8000-000000000001\",\n    \"household_id\": \"10000000-0000-4000-8000-000000000001\",\n    \"type\": \"organic\",\n    \"status\": \"completed\",\n    \"pickup_date\": \"2026-10-20T01:00:00Z\",\n    \"safety_check\": null,\n    \"created_at\": \"2026-10-19T05:00:00Z\",\n    \"updated_at\": \"2026-10-19T05:00:00Z\"\n  }\n}"
+            }
+          ]
+        },
+        {
+          "name": "Find report invoice",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{base_url}}/api/payments?household_id={{report_household_id}}&status=pending",
+            "description": ""
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 200', function () { pm.response.to.have.status(200); });",
+                  "pm.test('JSON content type', function () { pm.expect(pm.response.headers.get('Content-Type')).to.eql('application/json'); });",
+                  "pm.test('One pending report invoice', function () { pm.expect(pm.response.json().data).to.have.lengthOf(1); });",
+                  "if (pm.response.code === 200 && pm.response.json().data.length === 1) pm.collectionVariables.set('report_invoice_id', pm.response.json().data[0].id);"
+                ]
+              }
+            }
+          ],
+          "response": [
+            {
+              "name": "OK",
+              "status": "OK",
+              "code": 200,
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "body": "{\n  \"data\": [\n    {\n      \"id\": \"30000000-0000-4000-8000-000000000001\",\n      \"household_id\": \"10000000-0000-4000-8000-000000000001\",\n      \"waste_id\": \"20000000-0000-4000-8000-000000000001\",\n      \"amount\": \"50000.00\",\n      \"payment_date\": null,\n      \"status\": \"pending\",\n      \"proof_file_url\": null,\n      \"created_at\": \"2026-10-19T05:00:00Z\",\n      \"updated_at\": \"2026-10-19T05:00:00Z\"\n    }\n  ],\n  \"meta\": {\n    \"page\": 1,\n    \"limit\": 20,\n    \"total\": 1\n  }\n}"
+            }
+          ]
+        },
+        {
+          "name": "Verify pending amount without revenue",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{base_url}}/api/reports/payment-summary",
+            "description": ""
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 200', function () { pm.response.to.have.status(200); });",
+                  "pm.test('JSON content type', function () { pm.expect(pm.response.headers.get('Content-Type')).to.eql('application/json'); });",
+                  "pm.test('Pending amount increases, revenue unchanged', function () { const before = JSON.parse(pm.collectionVariables.get('report_payment_before')); const now = pm.response.json().data; const cents = function (s) { return BigInt(s.replace('.', '')); }; pm.expect(now.statuses[0].count).to.eql(before.statuses[0].count + 1); pm.expect(cents(now.statuses[0].amount).toString()).to.eql((cents(before.statuses[0].amount) + 5000000n).toString()); pm.expect(now.total_revenue).to.eql(before.total_revenue); pm.expect(now.statuses[1]).to.deep.eql(before.statuses[1]); pm.expect(now.statuses[2]).to.deep.eql(before.statuses[2]); });"
+                ]
+              }
+            }
+          ],
+          "response": [
+            {
+              "name": "OK",
+              "status": "OK",
+              "code": 200,
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "body": "{\n  \"data\": {\n    \"statuses\": [\n      {\n        \"status\": \"pending\",\n        \"count\": 1,\n        \"amount\": \"50000.00\"\n      },\n      {\n        \"status\": \"paid\",\n        \"count\": 0,\n        \"amount\": \"0.00\"\n      },\n      {\n        \"status\": \"failed\",\n        \"count\": 0,\n        \"amount\": \"0.00\"\n      }\n    ],\n    \"total_revenue\": \"0.00\"\n  }\n}"
+            }
+          ]
+        },
+        {
+          "name": "Confirm report invoice",
+          "request": {
+            "method": "PUT",
+            "header": [],
+            "url": "{{base_url}}/api/payments/{{report_invoice_id}}/confirm",
+            "description": "",
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "proof_file",
+                  "type": "file",
+                  "src": "postman/fixtures/proof.pdf"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 200', function () { pm.response.to.have.status(200); });",
+                  "pm.test('JSON content type', function () { pm.expect(pm.response.headers.get('Content-Type')).to.eql('application/json'); });"
+                ]
+              }
+            }
+          ],
+          "response": [
+            {
+              "name": "OK",
+              "status": "OK",
+              "code": 200,
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "body": "{\n  \"data\": {\n    \"id\": \"30000000-0000-4000-8000-000000000001\",\n    \"household_id\": \"10000000-0000-4000-8000-000000000001\",\n    \"waste_id\": \"20000000-0000-4000-8000-000000000001\",\n    \"amount\": \"50000.00\",\n    \"payment_date\": \"2026-10-19T06:00:00Z\",\n    \"status\": \"paid\",\n    \"proof_file_url\": \"uploads/92d6cf07-b478-4198-a160-d204dc6a85df.pdf\",\n    \"created_at\": \"2026-10-19T05:00:00Z\",\n    \"updated_at\": \"2026-10-19T06:00:00Z\"\n  }\n}"
+            }
+          ]
+        },
+        {
+          "name": "Verify paid revenue delta",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{base_url}}/api/reports/payment-summary",
+            "description": ""
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 200', function () { pm.response.to.have.status(200); });",
+                  "pm.test('JSON content type', function () { pm.expect(pm.response.headers.get('Content-Type')).to.eql('application/json'); });",
+                  "pm.test('Only paid contributes revenue', function () { const before = JSON.parse(pm.collectionVariables.get('report_payment_before')); const now = pm.response.json().data; const cents = function (s) { return BigInt(s.replace('.', '')); }; pm.expect(now.statuses[0]).to.deep.eql(before.statuses[0]); pm.expect(now.statuses[1].count).to.eql(before.statuses[1].count + 1); pm.expect(cents(now.statuses[1].amount).toString()).to.eql((cents(before.statuses[1].amount) + 5000000n).toString()); pm.expect(cents(now.total_revenue).toString()).to.eql((cents(before.total_revenue) + 5000000n).toString()); pm.expect(now.statuses[2]).to.deep.eql(before.statuses[2]); });"
+                ]
+              }
+            }
+          ],
+          "response": [
+            {
+              "name": "OK",
+              "status": "OK",
+              "code": 200,
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "body": "{\n  \"data\": {\n    \"statuses\": [\n      {\n        \"status\": \"pending\",\n        \"count\": 0,\n        \"amount\": \"0.00\"\n      },\n      {\n        \"status\": \"paid\",\n        \"count\": 1,\n        \"amount\": \"50000.00\"\n      },\n      {\n        \"status\": \"failed\",\n        \"count\": 0,\n        \"amount\": \"0.00\"\n      }\n    ],\n    \"total_revenue\": \"50000.00\"\n  }\n}"
+            }
+          ]
+        },
+        {
+          "name": "Verify completed waste delta",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{base_url}}/api/reports/waste-summary",
+            "description": ""
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 200', function () { pm.response.to.have.status(200); });",
+                  "pm.test('JSON content type', function () { pm.expect(pm.response.headers.get('Content-Type')).to.eql('application/json'); });",
+                  "pm.test('Final waste groups preserve other counts', function () { const before = JSON.parse(pm.collectionVariables.get('report_waste_before')); const now = pm.response.json().data; const groups = new Map(before.map(function (r) { return [r.type + '/' + r.status, r.count]; })); groups.set('organic/completed', (groups.get('organic/completed') || 0) + 1); pm.expect(now).to.have.lengthOf(groups.size); now.forEach(function (r) { pm.expect(r.count).to.eql(groups.get(r.type + '/' + r.status)); }); });"
+                ]
+              }
+            }
+          ],
+          "response": [
+            {
+              "name": "OK",
+              "status": "OK",
+              "code": 200,
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "body": "{\n  \"data\": [\n    {\n      \"type\": \"organic\",\n      \"status\": \"completed\",\n      \"count\": 1\n    }\n  ]\n}"
+            }
+          ]
+        },
+        {
+          "name": "Reject report mutation method",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": "{{base_url}}/api/reports/payment-summary",
+            "description": ""
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 405', function () { pm.response.to.have.status(405); });",
+                  "pm.test('JSON content type', function () { pm.expect(pm.response.headers.get('Content-Type')).to.eql('application/json'); });",
+                  "pm.test('Allowed methods', function () { pm.expect(pm.response.headers.get('Allow')).to.eql('GET, HEAD'); });",
+                  "pm.test('Stable error code', function () { pm.expect(pm.response.json().error.code).to.eql('method_not_allowed'); });"
+                ]
+              }
+            }
+          ],
+          "response": [
+            {
+              "name": "Method Not Allowed",
+              "status": "Method Not Allowed",
+              "code": 405,
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "body": "{\n  \"error\": {\n    \"code\": \"method_not_allowed\",\n    \"message\": \"Method is not allowed\"\n  }\n}"
             }
           ]
         }

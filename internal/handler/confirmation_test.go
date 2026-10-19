@@ -32,7 +32,7 @@ func (s confirmationServiceStub) Confirm(c context.Context, id string, b []byte)
 	return s.confirm(c, id, b)
 }
 func confirmationRouter(s ConfirmationService) http.Handler {
-	return New(func(context.Context) error { return nil }, slog.New(slog.NewTextHandler(io.Discard, nil)), nil, nil, nil, s)
+	return New(func(context.Context) error { return nil }, slog.New(slog.NewTextHandler(io.Discard, nil)), nil, nil, nil, s, nil)
 }
 func multipartRequest(t *testing.T, h http.Handler, id string, files [][]byte, names []string, truncate bool) *httptest.ResponseRecorder {
 	t.Helper()

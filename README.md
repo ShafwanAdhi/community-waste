@@ -2,7 +2,7 @@
 
 API pengumpulan sampah komunitas menggunakan Go dan PostgreSQL.
 
-Checkpoint saat ini menyediakan Household API, alur pickup hingga completion, serta pembuatan dan daftar payment. Konfirmasi bukti bayar dan filter tanggal payment sudah tersedia. Reporting serta seed belum tersedia pada checkpoint ini.
+Seluruh 14 endpoint sudah tersedia: household, pickup, payment dengan bukti bayar, dan laporan. Bonus graceful shutdown, unit test bisnis, serta filter tanggal payment sudah diterapkan. Seed contoh dapat dijalankan terpisah. Audit penyerahan dan dokumentasi Postman publik diselesaikan pada checkpoint berikutnya.
 
 ## Menjalankan aplikasi
 
@@ -214,6 +214,36 @@ GET /api/payments?status=paid&date_from=2026-10-18T00:00:00Z&date_to=2026-10-19T
 
 Payment tanpa payment_date tidak masuk hasil bila ada batas tanggal. Filter dapat digabung dengan status, household_id, dan pagination. Nilai kosong, berulang, tanggal salah, atau rentang terbalik/sama menghasilkan `400 invalid_filter`. Encode tanda `+` pada offset timezone menjadi `%2B` saat menulis query URL.
 
+## Laporan
+
+| Method | Endpoint | Hasil |
+|---|---|---|
+| `GET` | `/api/reports/waste-summary` | Jumlah pickup per kombinasi type/status yang memiliki data |
+| `GET` | `/api/reports/payment-summary` | Jumlah dan nominal setiap status payment serta total pendapatan |
+
+Laporan mencakup seluruh data, tanpa pagination atau filter. Waste summary diurutkan berdasarkan type lalu status secara alfabetis; database kosong menghasilkan `data: []`.
+
+```json
+{"data":[{"type":"organic","status":"pending","count":2},{"type":"plastic","status":"completed","count":1}]}
+```
+
+Payment summary selalu menyertakan status `pending`, `paid`, dan `failed` dalam urutan tersebut, termasuk status dengan count dan nominal nol. Pendapatan hanya berasal dari payment `paid`.
+
+```json
+{
+  "data": {
+    "statuses": [
+      {"status":"pending","count":2,"amount":"150000.00"},
+      {"status":"paid","count":2,"amount":"100000.00"},
+      {"status":"failed","count":2,"amount":"150000.00"}
+    ],
+    "total_revenue":"100000.00"
+  }
+}
+```
+
+Contoh angka payment di atas adalah hasil seed pada database kosong. Data tambahan ikut dihitung. Count dan nominal tiap laporan berasal dari satu query; pendapatan memakai hasil agregasi paid yang sama. SQL menjumlahkan NUMERIC secara tepat, lalu mengonversi hasil ke int64 dalam satuan 1/100 rupiah. Total dapat melampaui batas nominal satu payment; jika melampaui kapasitas int64, laporan gagal dengan `500` alih-alih menghasilkan nominal yang terpotong atau overflow.
+
 ## Konfigurasi
 
 Default Compose cukup untuk lingkungan lokal. Salin `.env.example` menjadi `.env` untuk mengubahnya.
@@ -254,7 +284,35 @@ Migration down awal menghapus ketiga tabel beserta datanya. Jalankan hanya pada 
 
 Schema menggunakan UUID, timestamp dengan timezone, dan constraint status/type. Satu pickup memiliki paling banyak satu payment. Foreign key gabungan memastikan household pada payment sama dengan pemilik pickup. Household yang masih memiliki relasi tidak dapat dihapus. Nominal memakai `NUMERIC(12,2)` dan harus positif.
 
-Seed akan ditambahkan bersama data contoh pada milestone berikutnya; belum ada perintah seed pada checkpoint ini.
+## Seed contoh
+
+Setelah aplikasi dan migration siap, jalankan:
+
+```sh
+docker compose exec app /app/community-waste seed
+```
+
+Alternatif tanpa proses server yang sedang berjalan:
+
+```sh
+docker compose run --rm app seed
+```
+
+Seed tidak berjalan otomatis saat startup. Perintah hanya mengisi snapshot contoh dalam satu transaksi, lalu keluar tanpa membuka HTTP listener. Output log menunjukkan jumlah record baru; pada database kosong hasilnya `households=4`, `pickups=16`, `payments=6`. Pengulangan tanpa perubahan menghasilkan nol untuk ketiganya.
+
+| Data | Isi |
+|---|---|
+| Household | Sari, Bima, Citra, Damar dengan alamat contoh |
+| Pickup | Seluruh 16 kombinasi empat type dan empat status; electronic pending/canceled false, scheduled/completed true |
+| Payment | Dua pending, dua paid, dua failed; tarif sesuai tipe pickup |
+| Bukti | Dua PDF contoh untuk payment paid, disimpan melalui adapter uploads dengan nama UUID |
+| Tanggal | Snapshot tetap 15–16 Oktober 2026; pickup scheduled bertanggal 20 Oktober 2026 |
+
+UUID contoh tetap memakai prefix `10000000` untuk household, `20000000` untuk pickup, dan `30000000` untuk payment; nomor akhir dimulai dari `000000000101`. Seed menyisipkan data yang belum ada dan mempertahankan status, tanggal, maupun path bukti yang sudah berubah. Invoice yang sudah dimiliki pickup dipakai sebagaimana adanya bila ownership dan nominal cocok; record lain tidak dihapus atau diubah. Benturan identitas tetap yang tidak cocok menggagalkan seluruh transaksi.
+
+Dua perintah seed bersamaan diserialisasi dengan advisory lock, lalu mengambil lock household sebelum pickup/payment seperti mutasi API. File baru dibersihkan bila penulisan atau COMMIT ditolak secara pasti; hasil COMMIT yang tidak pasti mempertahankan bukti, mengikuti kebijakan konfirmasi. Seed tidak bertujuan memperbaiki korupsi manual atau file yang dihapus di luar aplikasi.
+
+Pada snapshot awal, total pending `150000.00`, paid `100000.00`, failed `150000.00`; pendapatan `100000.00`. Household Bima dan Damar memiliki invoice pending sehingga pickup baru ditolak sampai tagihan dikonfirmasi. Sari dan Citra tidak mempunyai tagihan pending. Pickup terbuka pada snapshot merupakan permintaan yang dibuat sebelum invoice pending muncul.
 
 ## Pengujian
 
@@ -266,7 +324,7 @@ docker compose --profile test run --rm test gofmt -l cmd internal migrations
 
 Perintah pertama menjalankan seluruh test dengan race detector. Integration test menggunakan PostgreSQL terpisah di tmpfs dan membuat schema unik per pengujian. Migration up/down tidak dijalankan pada database aplikasi. Output `gofmt -l` harus kosong.
 
-Pengujian konfirmasi mencakup signature JPEG/PNG/PDF, batas tepat 5 MiB, multipart salah/hilang/ganda, kegagalan storage/database, cleanup file, penolakan konfirmasi ulang, konkurensi cancel/confirm/pickup baru, serta batas tanggal inklusif/eksklusif dan NULL. Pengujian billing mencakup parsing uang, empat tarif, invoice manual/otomatis, reuse invoice, rollback pada kegagalan INSERT payment maupun UPDATE pickup, dan antrean transaksi bersamaan yang diverifikasi melalui lock PostgreSQL. Pengujian pickup mencakup empat tipe sampah, electronic safety check, tanggal mendatang, transisi status, filter/pagination, payment pending/paid, transaksi rollback, dan request bersamaan. Pengujian lain mencakup validasi konfigurasi, response health dan routing error, penyelesaian request saat shutdown, migration up/down, CRUD household, validasi body/UUID/query, pagination, penanganan kegagalan database, serta constraint relasi dan penghapusan. Pengujian schema juga mencakup status, tipe sampah, safety check electronic, nominal, dan duplikasi payment.
+Pengujian laporan mencakup data kosong, kombinasi type/status, ketiga status payment, paid-only revenue, nominal desimal, serta agregat yang melampaui nominal maksimum satu payment. Pengujian seed mencakup snapshot lengkap, pengulangan tanpa duplikasi bukti, perubahan existing yang dipertahankan, benturan UUID, rollback database/storage/COMMIT, dan antrean seed bersamaan. Pengujian konfirmasi mencakup signature JPEG/PNG/PDF, batas tepat 5 MiB, multipart salah/hilang/ganda, kegagalan storage/database, cleanup file, penolakan konfirmasi ulang, konkurensi cancel/confirm/pickup baru, serta batas tanggal inklusif/eksklusif dan NULL. Pengujian billing mencakup parsing uang, empat tarif, invoice manual/otomatis, reuse invoice, rollback pada kegagalan INSERT payment maupun UPDATE pickup, dan antrean transaksi bersamaan yang diverifikasi melalui lock PostgreSQL. Pengujian pickup mencakup empat tipe sampah, electronic safety check, tanggal mendatang, transisi status, filter/pagination, payment pending/paid, transaksi rollback, dan request bersamaan. Pengujian lain mencakup validasi konfigurasi, response health dan routing error, penyelesaian request saat shutdown, migration up/down, CRUD household, validasi body/UUID/query, pagination, penanganan kegagalan database, serta constraint relasi dan penghapusan. Pengujian schema juga mencakup status, tipe sampah, safety check electronic, nominal, dan duplikasi payment.
 
 Collection Postman tersedia di `postman/community-waste.postman_collection.json`. Import collection lalu jalankan seluruh collection terhadap aplikasi yang aktif. Ubah variable `base_url` bila memakai port berbeda. Folder Households membuat record sendiri, menyimpan ID ke variable `household_id`, lalu menghapus record tersebut di akhir alur.
 
@@ -278,7 +336,7 @@ Jika Postman CLI tersedia:
 postman collection run postman/community-waste.postman_collection.json --no-report-events
 ```
 
-Collection mencakup health, CRUD household, alur pickup, pagination/filter, safety check, konflik status, dan input tidak valid. Folder Pickups membuat household khusus dan membatalkan pickup miliknya pada akhir alur. Household dan riwayat pickup dari folder ini tetap tersimpan karena API tidak menyediakan penghapusan pickup. Setiap run memakai fixture baru dan tidak mengubah data yang sudah ada. Folder Billing membuat household dan pickup khusus untuk invoice manual/otomatis, reuse, penolakan pickup baru, serta pembatalan invoice. Riwayat completed/canceled dan invoice dari folder ini tetap tersimpan; invoice pending memblokir pickup baru pada household fixture tersebut. Folder Confirmation menjalankan upload bukti, filter tanggal, penolakan konfirmasi ulang, dan pembuatan pickup baru setelah dibayar. Bukti dan riwayat fixture tetap tersimpan dalam volume. Reporting dan dokumentasi Postman publik ditambahkan pada milestone berikutnya.
+Collection mencakup health, CRUD household, alur pickup, pagination/filter, safety check, konflik status, dan input tidak valid. Folder Pickups membuat household khusus dan membatalkan pickup miliknya pada akhir alur. Household dan riwayat pickup dari folder ini tetap tersimpan karena API tidak menyediakan penghapusan pickup. Setiap run memakai fixture baru dan tidak mengubah data yang sudah ada. Folder Billing membuat household dan pickup khusus untuk invoice manual/otomatis, reuse, penolakan pickup baru, serta pembatalan invoice. Riwayat completed/canceled dan invoice dari folder ini tetap tersimpan; invoice pending memblokir pickup baru pada household fixture tersebut. Folder Confirmation menjalankan upload bukti, filter tanggal, penolakan konfirmasi ulang, dan pembuatan pickup baru setelah dibayar. Bukti dan riwayat fixture tetap tersimpan dalam volume. Folder Reporting memeriksa perubahan agregat dari pickup hingga konfirmasi memakai baseline data yang sudah ada, sehingga assertion tetap berlaku pada database berisi seed maupun data lain. Dokumentasi Postman publik dan audit akhir ditambahkan pada checkpoint penyerahan.
 
 ## Struktur
 
@@ -290,6 +348,7 @@ internal/domain/    Model, pagination, dan error aplikasi
 internal/handler/   Routing HTTP dan response JSON
 internal/service/   Validasi input dan aturan aplikasi
 internal/repository/postgres/  Query dan pemetaan error PostgreSQL
+internal/seed/      Snapshot contoh transaksional dan bukti PDF yang di-embed
 internal/storage/   Penyimpanan dan cleanup bukti lokal
 internal/server/    Lifecycle server dan graceful shutdown
 internal/testutil/  Fixture database terisolasi untuk pengujian

@@ -16,6 +16,7 @@ import (
 	"community-waste/internal/database"
 	"community-waste/internal/handler"
 	"community-waste/internal/repository/postgres"
+	"community-waste/internal/seed"
 	"community-waste/internal/server"
 	"community-waste/internal/service"
 	"community-waste/internal/storage"
@@ -39,9 +40,10 @@ func run(ctx context.Context, args []string, logger *slog.Logger) error {
 	}
 	valid := (command == "serve" && len(args) <= 1) ||
 		(command == "healthcheck" && len(args) == 1) ||
+		(command == "seed" && len(args) == 1) ||
 		(command == "migrate" && len(args) == 2 && (args[1] == "up" || args[1] == "down"))
 	if !valid {
-		return errors.New("usage: community-waste [serve | healthcheck | migrate up | migrate down]")
+		return errors.New("usage: community-waste [serve | healthcheck | migrate up | migrate down | seed]")
 	}
 	cfg, err := config.Load()
 	if err != nil {
@@ -73,6 +75,14 @@ func run(ctx context.Context, args []string, logger *slog.Logger) error {
 		return err
 	}
 	defer pool.Close()
+	if command == "seed" {
+		result, err := seed.Run(ctx, pool, storage.NewLocalProof(cfg.UploadDir))
+		if err != nil {
+			return err
+		}
+		logger.Info("seed applied", "households", result.Households, "pickups", result.Pickups, "payments", result.Payments)
+		return nil
+	}
 	listener, err := net.Listen("tcp", cfg.HTTPAddr)
 	if err != nil {
 		return fmt.Errorf("listen: %w", err)
@@ -82,9 +92,10 @@ func run(ctx context.Context, args []string, logger *slog.Logger) error {
 	pickups := service.NewPickup(postgres.NewPickup(pool))
 	billing := service.NewBilling(postgres.NewBilling(pool))
 	confirmation := service.NewConfirmation(postgres.NewConfirmation(pool), storage.NewLocalProof(cfg.UploadDir))
+	reports := service.NewReport(postgres.NewReport(pool))
 	srv := &http.Server{
 		Addr:              cfg.HTTPAddr,
-		Handler:           handler.New(pool.Ping, logger, households, pickups, billing, confirmation),
+		Handler:           handler.New(pool.Ping, logger, households, pickups, billing, confirmation, reports),
 		ReadHeaderTimeout: 5 * time.Second,
 		ReadTimeout:       15 * time.Second,
 		WriteTimeout:      15 * time.Second,

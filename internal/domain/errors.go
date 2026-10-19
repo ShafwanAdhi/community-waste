@@ -3,7 +3,7 @@ package domain
 import "errors"
 
 var (
-	ErrCommitUncertain     = errors.New("confirmation commit outcome is uncertain")
+	ErrCommitUncertain     = errors.New("transaction commit outcome is uncertain")
 	ErrProofTooLarge       = errors.New("proof file exceeds 5 MiB")
 	ErrUnsupportedProof    = errors.New("proof must be JPEG, PNG, or PDF")
 	ErrPaymentNotPending   = errors.New("only pending payment can be confirmed")
